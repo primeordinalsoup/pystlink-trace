@@ -1,0 +1,8 @@
+_pytrace_completion() {
+    COMPREPLY=( $( env COMP_WORDS="${COMP_WORDS[*]}" \
+                   COMP_CWORD=$COMP_CWORD \
+                   _PYTRACE_COMPLETE=complete $1 ) )
+    return 0
+}
+
+complete -F _pytrace_completion -o default pytrace;
