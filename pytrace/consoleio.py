@@ -21,7 +21,7 @@ class Conio():
     def __exit__(self, etype, value, traceback):
         """restore tty (i.e. restore line buffering)"""
         termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self._orig_settings)
-        return True if type == self.Break else etype
+        return True if etype == self.Break else etype
 
     def kbhit(self):
         return select([sys.stdin], [], [], 0) == ([sys.stdin], [], [])
