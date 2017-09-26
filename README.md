@@ -10,19 +10,22 @@ Installing
 
 From the Dynamic repo:
 $sudo apt-get install pystlink-trace
+
 *this should be already installed as part of standard dev. meta package.*
 
 Manually, in a python 3 environment:
 - pip install -r requirements.txt
 - pip install -e .
 
+*TIP:*  Copy the pytrace-completion file to /etc/bash_completion.d to
+activate tab completion.
 
 Usage
 -----
 
-$ stlink-trace --help
-
-$ stlink-trace --version
-
-$ stlink-trace -b 20000000   # over-ride default target XTAL freq. of 72000000
+$ pytrace --help
+  
+$ pytrace --version
+  
+$ pytrace --xtal 200   # over-ride default target XTAL freq. of 72mHz for 200MHz REMRE
 
