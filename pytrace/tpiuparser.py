@@ -99,16 +99,19 @@ class _SoftwareBody(State):
 
 class _HardwareBody(State):
     def __init__(self, payloadLth):
-        print("_HardwareBody INIT")
+        pass
+        #print("_HardwareBody INIT")
 
     def onEntry(self, me):
-        print("HardwareBody: ENTRY")
+        pass
+        #print("HardwareBody: ENTRY")
 
     def onExit(self, me):
-        print("HardwareBody: EXIT")
+        pass
+        #print("HardwareBody: EXIT")
 
     def onRxByte(self, me, byte):
-        print("HardwareBody got byte {}, trans...".format(byte))
+        #print("HardwareBody got byte {}, trans...".format(byte))
         me.onEvent("Bob", "data about Bob")
         me.trans(_WaitingForHeader())
 # here we assign the class variables shared by
@@ -196,6 +199,7 @@ class TPIUParser(object):
                 if self._term0.isComplete():
                     # output the completed line
                     print(self._term0.line)
+                    #print("{}{}".format(self._timestamp.fmtDiff(), self._term0.line))
                     self._term0.reset()
             elif (sit.lth == 2) or (sit.lth == 4):
                 # text output VALUE, format as dec(hex)
@@ -203,7 +207,7 @@ class TPIUParser(object):
         elif sit.chan == DBG_EV_PORT_TIMESTAMP:
             #timestamp
             self._timestamp.update16(sit.sum)
-            print("{}  timer update".format(self._timestamp.fmtAbs()))
+            #print("{}  timer update".format(self._timestamp.fmtAbs()))
         elif sit.chan == DBG_EV_PORT_QFSIGDISPATCH:
             #qf dispatch
             if sit.lth == 1:
