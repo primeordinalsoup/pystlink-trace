@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 
+# we package up via debian which makes an EGG, so we
+# need to require to load the module
+from pkg_resources import require
+require("pyswd")
 from swd import stlink
 
 class StlinkTrace():

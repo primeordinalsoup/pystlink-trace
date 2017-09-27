@@ -21,9 +21,6 @@ setup(
     author='Peter Kraak<pkraak@dynamiccontrols.com>',
     license=the_license,
     packages=['pytrace'],
-    install_requires=[
-        'pyswd'
-    ],
     entry_points={
         'console_scripts': [
             'pytrace=pytrace.cli:run'],
