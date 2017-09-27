@@ -1,3 +1,15 @@
+# python development (running locally, packaging)
 *.egg-info
 __pycache__
 *.pyc
+*.tgz
+dist/
+build/
+doc-pak/
+description-pak
+*.deb
+
+# tagging via gnu global
+GPATH
+GRTAGS
+GTAGS
