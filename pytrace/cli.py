@@ -5,36 +5,38 @@ import signal
 from pytrace import stlinktrace, tpiuparser
 
 class GracefulInterruptHandler(object):
-
-    def __init__(self, sig=signal.SIGINT):
-        self.sig = sig
+    """This is a context manager that hooks some signals and captures if they
+    have fired, to allow breaking out a loop cleanly (do cleanup via 'with' construct)"""
+    
+    def __init__(self, signals=(signal.SIGINT, signal.SIGTERM, signal.SIGPIPE)):
+        self.signals = signals
+        self.original_handlers = {}
 
     def __enter__(self):
         self.interrupted = False
         self.released = False
 
-        self.original_handler = signal.getsignal(self.sig)
-
-        def handler(signum, frame):
-            self.release()
-            self.interrupted = True
-
-        signal.signal(self.sig, handler)
+        for sig in self.signals:
+            self.original_handlers[sig] = signal.getsignal(sig)
+            signal.signal(sig, self.handler)
 
         return self
+
+    def handler(self, signum, frame):
+        self.release()
+        self.interrupted = True
 
     def __exit__(self, type, value, tb):
         self.release()
 
     def release(self):
-
         if self.released:
             return False
 
-        signal.signal(self.sig, self.original_handler)
+        for sig in self.signals:
+            signal.signal(sig, self.original_handlers[sig])
 
         self.released = True
-
         return True
 
     
