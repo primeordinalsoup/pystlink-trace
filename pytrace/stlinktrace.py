@@ -40,7 +40,7 @@ class StlinkTrace():
         self._stlink.set_mem32(0xe000edfc, 0x01000000)
         self._stlink.set_mem32(0xe0040004, 0x00000001)
         v = int(xtal_MHz*1000000/baud - 0.5)  # -1 + 0.5 for rounding => -0.5
-        print("XTAL {} MHz, baud {} => TPIU xtal REG VAL {}".format(xtal_MHz, baud, v))
+        #print("XTAL {} MHz, baud {} => TPIU xtal REG VAL {}".format(xtal_MHz, baud, v))
         self._stlink.set_mem32(0xe0040010, v)
         self._stlink.set_mem32(0xe00400f0, 0x00000002)
         self._stlink.set_mem32(0xe0040304, 0x00000100)

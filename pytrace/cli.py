@@ -3,6 +3,7 @@
 import click
 import signal
 from pytrace import stlinktrace, tpiuparser
+import time
 
 class GracefulInterruptHandler(object):
     """This is a context manager that hooks some signals and captures if they
@@ -58,7 +59,20 @@ def run(xtal, baud):
         parser = tpiuparser.TPIUParser()
 
         with GracefulInterruptHandler() as h:
+            currmode = trace._stlink.com.xfer([0xf5], rx_len=2)
             while True:
+                v = trace._stlink.get_target_voltage()
+                if v < 1:
+                    print("powered OFF! - waiting for power up")
+                    while trace._stlink.get_target_voltage() < 3:
+                        pass
+                    print("target powered on!")
+                    time.sleep(0.1)
+                    trace._stlink.leave_state()
+                    trace._stlink.enter_debug_swd()
+                    trace._setupSWOTracing(xtal, baud)
+                    trace.startSWO()
+
                 swo = trace.readSWO()
                 if swo:
                     #print(swo)
