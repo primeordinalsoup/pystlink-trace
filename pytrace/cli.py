@@ -46,7 +46,7 @@ class GracefulInterruptHandler(object):
 
 @click.command()
 @click.option('--xtal', default=72, help='XTAL frequency of target in MHz')
-@click.option('--baud', default=500000, help='Baud rate for SWO from target (2000000 max)')
+@click.option('--baud', default=250000, help='Baud rate for SWO from target (2000000 max)')
 def run(xtal, baud):
     """Capture SWO trace output from stlink V2"""
     try:
