@@ -192,6 +192,7 @@ class TPIUParser(object):
 
     def onSIT(self, ev, sit):
         # IF 0..7 do printf, null term for single, itoa for 2/4 bytes
+        # NOTE: we only use a single term0 for all 8 channel, need an array of them.
         if sit.chan < 8:
             if sit.lth == 1:
                 # normal printable char (or line ending)

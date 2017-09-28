@@ -11,18 +11,19 @@ class StlinkTrace():
     This knows how to manage the arm Cortex-M ITM and TPIU via
     an ST-Link usb JTAG dongle as accessed by pyswd class (sold separately)."""
 
-    def __init__(self, xtal_MHz=72):
+    def __init__(self, xtal_MHz=72, swo_baud=250000):
         self._stlink = stlink.Stlink()
         s = self._stlink.version.str
         self._xtal_MHz = xtal_MHz
+        self._swo_baud = swo_baud
         print(s)
         print(self._stlink.get_target_voltage())
         print(hex(self._stlink.get_coreid()))
-        self._setupSWOTracing(self._xtal_MHz)
+        self._setupSWOTracing(self._xtal_MHz, self._swo_baud)
 
     def startSWO(self):
         self._stlink.stop_trace_rx()
-        self._stlink.start_trace_rx()
+        self._stlink.start_trace_rx(baud_rate_hz=self._swo_baud)
 
     def stopSWO(self):
         self._stlink.stop_trace_rx()
@@ -34,12 +35,12 @@ class StlinkTrace():
         else:
             return None
 
-    def _setupSWOTracing(self, xtal_MHz):
+    def _setupSWOTracing(self, xtal_MHz, baud):
         # captured via tshark from openocd with tpiu config
         self._stlink.set_mem32(0xe000edfc, 0x01000000)
         self._stlink.set_mem32(0xe0040004, 0x00000001)
-        v = int(xtal_MHz/2 - 0.5)  # -1 + 0.5 for rounding => -0.5
-        print("TPIU xtal REG VAL {}".format(v))
+        v = int(xtal_MHz*1000000/baud - 0.5)  # -1 + 0.5 for rounding => -0.5
+        print("XTAL {} MHz, baud {} => TPIU xtal REG VAL {}".format(xtal_MHz, baud, v))
         self._stlink.set_mem32(0xe0040010, v)
         self._stlink.set_mem32(0xe00400f0, 0x00000002)
         self._stlink.set_mem32(0xe0040304, 0x00000100)

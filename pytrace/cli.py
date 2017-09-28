@@ -45,10 +45,11 @@ class GracefulInterruptHandler(object):
 
 @click.command()
 @click.option('--xtal', default=72, help='XTAL frequency of target in MHz')
-def run(xtal):
+@click.option('--baud', default=500000, help='Baud rate for SWO from target (2000000 max)')
+def run(xtal, baud):
     """Capture SWO trace output from stlink V2"""
     try:
-        trace = stlinktrace.StlinkTrace(xtal)
+        trace = stlinktrace.StlinkTrace(xtal, baud)
     except Exception as e:
         print("NO STLINK! exiting. {}".format(e))
     else:
@@ -63,7 +64,7 @@ def run(xtal):
                     #print(swo)
                     parser.parseBytes(swo)
                 if h.interrupted:
-                    print("CAUGHT ^C")
+                    print("CAUGHT Linux signal - terminating.")
                     break
 
         print("stopping SWO")
