@@ -1,8 +1,24 @@
-_pytrace_completion() {
-    COMPREPLY=( $( env COMP_WORDS="${COMP_WORDS[*]}" \
-                   COMP_CWORD=$COMP_CWORD \
-                   _PYTRACE_COMPLETE=complete $1 ) )
-    return 0
+_pytrace() {
+    local cur prev opts
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+    opts="--xtal --baud --elf --addr{0..3} --sym{0..3} --size{0..3}"
+
+    if [[ ${cur} =~ ^-.* ]] ; then
+        COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
+        return 0
+    elif [[ (${prev} =~ --elf) || (${cur} =~ bld.*) ]]; then
+        elves="$(find bld -iname *app*.elf)"
+        COMPREPLY=( $(compgen -W "${elves}" -- ${cur}) )
+        if [[ -r ${COMPREPLY} ]]; then
+           # COMPREPLY is valid elf file so get its symbols
+           # now to complete --sym later
+           syms=$(nm -S ${COMPREPLY} | awk '{if ($4) print $4;}')
+        fi
+    elif [[ ${prev} =~ --sym ]]; then
+        COMPREPLY=( $(compgen -W "${syms}" -- ${cur}) )
+    fi
 }
 
-complete -F _pytrace_completion -o default pytrace;
+complete -F _pytrace pytrace

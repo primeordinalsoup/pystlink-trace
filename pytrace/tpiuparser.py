@@ -2,13 +2,36 @@
 """
   This module can parse the binary stream from an Arm Cortex-M TPIU and render
   the software packets (i.e. ITM print streams).
+
+  For details of the ITM, DWT, TPIO registers and also the TPIO protocol please see:
+    "ARMv7-M Architecture Reference Manual",  ARM DDI 0403D (ID021310)
+    Ch C1 ARMv7-M Debug
 """
+
+from subprocess import Popen, PIPE
+from enum import Enum
 
 DBG_EV_PORT_TIMESTAMP        = 8
 DBG_EV_PORT_QFSIGDISPATCH    = 9
 DBG_EV_PORT_QFSIGCOMPLETE    = 10
 DBG_EV_PORT_QFSTATEENTRY     = 11
 DBG_EV_PORT_FIRST_USER_EVENT = 20
+
+
+
+class AddressResolver(object):
+    """This encapsulates a subprocess to get addr2line info from the elf file, to
+    convert raw address values to file:line references."""
+
+    def __init__(self, elfFile):
+        "docstring"
+        self._p = Popen(['addr2line', '-e', elfFile], universal_newlines=True, stdin=PIPE, stdout=PIPE) 
+
+    def resolve(self, addr):
+        addrTxt = "{}\n".format(hex(addr))
+        self._p.stdin.write(addrTxt)
+        self._p.stdin.flush()
+        return self._p.stdout.readline()
 
 
 class State:
@@ -53,7 +76,7 @@ class TPIUParserSM(StateMachine):
         StateMachine.__init__(self, _WaitingForHeader())
 
 class SITData:
-    """ data class for SIT data """
+    """ data class for Software Instrumentation data """
     def __init__(self, chan, lth):
         self.chan = chan
         self.expectedLth = lth
@@ -66,31 +89,75 @@ class SITData:
         self.lth += 1
         self.data.append(byte)
 
+class Type(Enum):
+    UNKNOWN           = -1
+    EVENT_COUNT       = 0
+    EXCEPTION_TRACE   = 1
+    PC_SAMPLE         = 2
+    DATA_TRACE_PC     = 3
+    DATA_TRACE_OFFSET = 4
+    DATA_TRACE_DATA   = 5
+
+class HSPData:
+    """ data class for Hardware Source Packet data """
+    def __init__(self, discriminator, lth):
+        self.discriminator = discriminator
+        if discriminator == 0:
+            self.type = Type.EVENT_COUNT
+        elif discriminator == 1:
+            self.type = Type.EXCEPTION_TRACE
+        elif discriminator == 2:
+            self.type = Type.PC_SAMPLE
+        elif discriminator >=8 and discriminator <= 23:
+            packetType = (discriminator & 0x18) >> 3
+            packetSubType = discriminator & 0x01
+            self.dwtIndex = (discriminator & 0x06) >> 1
+            if packetType == 1:
+                if packetSubType == 1:
+                    self.type = Type.DATA_TRACE_OFFSET
+                else:
+                    self.type = Type.DATA_TRACE_PC
+            elif packetType == 2:
+                self.type = Type.DATA_TRACE_DATA
+                self.isWrite = (packetSubType == 1)
+            else:
+                self.type = Type.UNKNOWN
+        else:
+            self.type = Type.UNKNOWN
+        self.expectedLth = lth
+        self.lth = 0
+        self.value = 0
+        self.data = []
+
+    def addByte(self, byte):
+        self.value += byte << (self.lth*8) # shift in next byte (LSB first)
+        self.lth += 1
+        self.data.append(byte)
+
 class _WaitingForHeader(State):
     def onRxByte(self, me, byte):
-        #print "WAITING HEADER got byte 0x{:02x}".format(byte)
+        #print "WAITING HEADER got byte 0x{:02x}".format(bffyte)
         if byte == 0x70:
             me.onEvent("Overflow")
         elif (byte & 0x7f) == 0x00:
             me.onEvent("Sync byte")
         elif ((byte & 0x03) != 0x00) and ((byte & 0x04) == 0x04):
             size = (2 ** (2+(byte & 0x03))) >> 3
-            me.onEvent("HARDWARE SRC", "payload length {}".format(size))
-            me.trans(_HardwareBody(size))
+            disc = (0xf8 & byte) >> 3
+            #me.onEvent("HARDWARE SRC", "payload length {}".format(size))
+            me.trans(_HardwareBody(disc, size))
         elif ((byte & 0x03) != 0x00) and ((byte & 0x04) == 0x00):
             size = (2 ** (2+(byte & 0x03))) >> 3
             chan = (0xf8 & byte) >> 3
-            me.onEvent("SOFTWARE SRC", "payload length {}".format(size))
+            #me.onEvent("SOFTWARE SRC", "payload length {}".format(size))
             me.trans(_SoftwareBody(chan, size))
 
 class _SoftwareBody(State):
     def __init__(self, channel, payloadLth):
         self.len = payloadLth
         self.sit = SITData(channel, payloadLth)
-        #print "_SoftwareBody INIT"
 
     def onRxByte(self, me, byte):
-        #print "SoftwareBody got byte {}, trans...".format(byte)
         self.sit.addByte(byte)
         self.len -= 1
         if self.len == 0:
@@ -98,25 +165,16 @@ class _SoftwareBody(State):
             me.trans(_WaitingForHeader())
 
 class _HardwareBody(State):
-    def __init__(self, payloadLth):
-        pass
-        #print("_HardwareBody INIT")
-
-    def onEntry(self, me):
-        pass
-        #print("HardwareBody: ENTRY")
-
-    def onExit(self, me):
-        pass
-        #print("HardwareBody: EXIT")
+    def __init__(self, discriminator, payloadLth):
+        self.len = payloadLth
+        self.hsp = HSPData(discriminator, payloadLth)
 
     def onRxByte(self, me, byte):
-        #print("HardwareBody got byte {}, trans...".format(byte))
-        me.onEvent("Bob", "data about Bob")
-        me.trans(_WaitingForHeader())
-# here we assign the class variables shared by
-# all TPIUParser objects.  They are references to
-# the locally scoped state handler objects (singletons).
+        self.hsp.addByte(byte)
+        self.len -= 1
+        if self.len == 0:
+            me.onEvent("HSP_"+self.hsp.type.name, self.hsp)
+            me.trans(_WaitingForHeader())
 
 class TimeStamp(object):
     """ manages timebase from updates via SWO of
@@ -175,12 +233,16 @@ class TextOutput(object):
 
 
 class TPIUParser(object):
-    def __init__(self):
+    def __init__(self, elfFile):
         self._sm = TPIUParserSM()
-        self._sm.setEventPrinting(False)
+        #self._sm.setEventPrinting(False)
         self._sm.eventHandlers["SIT"] = self.onSIT
+        self._sm.eventHandlers["HSP_DATA_TRACE_PC"] = self.onPC
+        self._sm.eventHandlers["HSP_DATA_TRACE_DATA"] = self.onData
         self._term0 = TextOutput()
         self._timestamp = TimeStamp()
+        if elfFile:
+            self.addr2line = AddressResolver(elfFile)
 
     def parseValue(self, intValue):
         self._sm.onRxByte(intValue)
@@ -189,6 +251,22 @@ class TPIUParser(object):
         for intValue in bytes:
             # iterate bytesarray gives INTS
             self.parseValue(intValue)
+
+    def onPC(self, ev, hsp):
+        """Hardware Source Packet - PC value event"""
+        if self.addr2line:
+            where = "# " + self.addr2line.resolve(hsp.value).rstrip("\r\n")
+        else:
+            where = ""
+        print("PC: {:08x} {}".format(hsp.value, where))
+
+    def onData(self, ev, hsp):
+        """Hardware Source Packet - data value event"""
+        if hsp.isWrite:
+            writeDir = "<-"
+        else:
+            writeDir = "->"
+        print("DWT{}: {} {}".format(hsp.dwtIndex, writeDir, hsp.value))
 
     def onSIT(self, ev, sit):
         # IF 0..7 do printf, null term for single, itoa for 2/4 bytes

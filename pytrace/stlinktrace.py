@@ -5,6 +5,7 @@
 from pkg_resources import require
 require("pyswd")
 from swd import stlink
+import math
 
 class StlinkTrace():
     """ST-Link SWO tracing class.
@@ -34,6 +35,26 @@ class StlinkTrace():
             return self._stlink.com.read_swo()
         else:
             return None
+
+    def setWatch(self, index, addr, size = 4, getData = True, getPC = False, getOffset = False):
+        """ set the DWT(index) to watch data access of address.  can get SWO output for
+        the data (read and write), the PC for the instruction that accessed the addr, and the
+        offset into the address block (address:size).  Not if requesting PC and offset you only
+        get the offset due to limitations of the DWT. """
+        regOffset = 16 * index
+        self._stlink.set_mem32(0xe0001020 + regOffset, addr)      # DWT_COMPn
+        addrBits = math.floor( math.log(size, 2) )
+        print("setting watch0;  addr {}  bits {}".format(addr, addrBits))
+        self._stlink.set_mem32(0xe0001024 + regOffset, addrBits)  # DWT_MASKn
+        function = 0
+        if getPC:
+            function |= 1 << 0
+        if getData:
+            function |= 1 << 1
+        if getOffset:
+            function |= 1 << 5
+        print("setting function reg: {}".format(function))
+        self._stlink.set_mem32(0xe0001028 + regOffset, function) # DWT_FUNCTIONn
 
     def _setupSWOTracing(self, xtal_MHz, baud):
         # captured via tshark from openocd with tpiu config
