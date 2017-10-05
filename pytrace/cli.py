@@ -58,7 +58,6 @@ def run(xtal, baud, elf, sym0, addr0, size0):
     except Exception as e:
         print("NO STLINK! exiting. {}".format(e))
     else:
-        trace.startSWO()
         if sym0 or addr0:
             # set the user provided explicit values (they override the symbol table)
             if addr0:
@@ -83,24 +82,12 @@ def run(xtal, baud, elf, sym0, addr0, size0):
             if not size:
                 size = 4  # no size0 or sym0 set, default to 4
             trace.setWatch(0, addr, size=size, getPC=True)
-        print("starting SWO")
         parser = tpiuparser.TPIUParser(elf)
 
+        print("starting SWO")
+        trace.startSWO()  # while SWO active other calls than stopSWO and readSWO allowed
         with GracefulInterruptHandler() as h:
-            currmode = trace._stlink.com.xfer([0xf5], rx_len=2)
             while True:
-                v = trace._stlink.get_target_voltage()
-                if v < 1:
-                    print("powered OFF! - waiting for power up")
-                    while trace._stlink.get_target_voltage() < 3:
-                        pass
-                    print("target powered on!")
-                    time.sleep(0.1)
-                    trace._stlink.leave_state()
-                    trace._stlink.enter_debug_swd()
-                    trace._setupSWOTracing(xtal, baud)
-                    trace.startSWO()
-
                 swo = trace.readSWO()
                 if swo:
                     #print(swo)
@@ -108,7 +95,6 @@ def run(xtal, baud, elf, sym0, addr0, size0):
                 if h.interrupted:
                     print("CAUGHT Linux signal - terminating.")
                     break
-
         print("stopping SWO")
         trace.stopSWO()
 

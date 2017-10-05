@@ -6,6 +6,10 @@ from pkg_resources import require
 require("pyswd")
 from swd import stlink
 import math
+import time
+import queue, threading
+import copy
+#import usb
 
 class StlinkTrace():
     """ST-Link SWO tracing class.
@@ -20,41 +24,105 @@ class StlinkTrace():
         print(s)
         print(self._stlink.get_target_voltage())
         print(hex(self._stlink.get_coreid()))
-        self._setupSWOTracing(self._xtal_MHz, self._swo_baud)
+        # we remember all DWT settings for auto resetting after power cycles
+        self._DWT = []
+        # all False gives function value of 0, i.e. DWT disabled.
+        dfltDWT = {"addr": 0, "size": 4, "getData": False, "getPC": False, "getOffset": False}
+        for i in range(4):
+            self._DWT.append(copy.deepcopy(dfltDWT))
 
-    def startSWO(self):
+        self._setupSWOTracing(self._xtal_MHz, self._swo_baud)
+        self._readingSWO = False
+        self._queue = queue.Queue()
+        self._thread = threading.Thread(target=self._pumpSWO)
+
+    def _pumpSWO(self):
+        """Thread function for pumping libUSB link to read
+        SWO packets, check target OK, and reset target if
+        needed."""
+        zeroCnt = 0
         self._stlink.stop_trace_rx()
         self._stlink.start_trace_rx(baud_rate_hz=self._swo_baud)
+        while self._readingSWO:
+            v = self._stlink.get_target_voltage()
+            if v < 1:
+                print("powered OFF! - waiting for power up")
+                while self._stlink.get_target_voltage() < 3:
+                    pass
+                print("target powered on!")
+                time.sleep(0.1)
+                self._stlink.leave_state()
+                self._stlink.enter_debug_swd()
+                self._setupSWOTracing(self._xtal_MHz, self._swo_baud)
+                self._setAllWatches()
+                self._stlink.stop_trace_rx()
+                self._stlink.start_trace_rx(baud_rate_hz=self._swo_baud)
+                zeroCNT = 0
+            else:
+                #try:
+                num = self._stlink.get_trace_buffered_count()
+                #except usb.core.USBError:
+                #    num = 0
+                #    pass
+                if (num == 0):
+                    zeroCnt += 1
+                    if zeroCnt > 100:
+                        # Stlink frozen? kick it.
+                        print("***** ST-Link FROZEN??!! - kicking it *****")
+                        self._stlink.stop_trace_rx()
+                        self._stlink.start_trace_rx(baud_rate_hz=self._swo_baud)
+                        zeroCnt = 0
+                elif ( num > 0 ):
+                    self._queue.put(self._stlink.com.read_swo())
+        self._stlink.stop_trace_rx()
+
+    def startSWO(self):
+        self._readingSWO = True
+        self._thread.start()
 
     def stopSWO(self):
-        self._stlink.stop_trace_rx()
+        self._readingSWO = False # will cause thread function to finish
         
     def readSWO(self):
-        num = self._stlink.get_trace_buffered_count()
-        if ( num > 0 ):
-            return self._stlink.com.read_swo()
-        else:
-            return None
+        try:
+            data = self._queue.get(timeout=1)
+        except queue.Empty:
+            data = None
+        return data
+
+    def _setAllWatches(self):
+        for i in range(4):
+            self._setWatch(i)
+        
+    def _setWatch(self, index):
+        """ set the DWT(index) to the internally recorded setpoints. """
+        print("setting DWT{}:".format(index))
+        regOffset = 16 * index
+        self._stlink.set_mem32(0xe0001020 + regOffset, self._DWT[index]['addr'])      # DWT_COMPn
+        addrBits = math.floor( math.log(self._DWT[index]['size'], 2) )
+        print("setting watch0;  addr {}  bits {}".format(self._DWT[index]['addr'], addrBits))
+        self._stlink.set_mem32(0xe0001024 + regOffset, addrBits)  # DWT_MASKn
+        function = 0
+        if self._DWT[index]['getPC']:
+            function |= 1 << 0
+        if self._DWT[index]['getData']:
+            function |= 1 << 1
+        if self._DWT[index]['getOffset']:
+            function |= 1 << 5
+        print("setting function reg: {}".format(function))
+        self._stlink.set_mem32(0xe0001028 + regOffset, function) # DWT_FUNCTIONn
 
     def setWatch(self, index, addr, size = 4, getData = True, getPC = False, getOffset = False):
         """ set the DWT(index) to watch data access of address.  can get SWO output for
         the data (read and write), the PC for the instruction that accessed the addr, and the
         offset into the address block (address:size).  Not if requesting PC and offset you only
         get the offset due to limitations of the DWT. """
-        regOffset = 16 * index
-        self._stlink.set_mem32(0xe0001020 + regOffset, addr)      # DWT_COMPn
-        addrBits = math.floor( math.log(size, 2) )
-        print("setting watch0;  addr {}  bits {}".format(addr, addrBits))
-        self._stlink.set_mem32(0xe0001024 + regOffset, addrBits)  # DWT_MASKn
-        function = 0
-        if getPC:
-            function |= 1 << 0
-        if getData:
-            function |= 1 << 1
-        if getOffset:
-            function |= 1 << 5
-        print("setting function reg: {}".format(function))
-        self._stlink.set_mem32(0xe0001028 + regOffset, function) # DWT_FUNCTIONn
+        self._DWT[index]['addr']      = addr
+        self._DWT[index]['size']      = size
+        self._DWT[index]['getPC']     = getPC
+        self._DWT[index]['getData']   = getData
+        self._DWT[index]['getOffset'] = getOffset
+        self._setWatch(index)
 
     def _setupSWOTracing(self, xtal_MHz, baud):
         # captured via tshark from openocd with tpiu config
