@@ -8,7 +8,7 @@
     Ch C1 ARMv7-M Debug
 """
 
-from subprocess import Popen, PIPE
+from subprocess import Popen, PIPE, run
 from enum import Enum
 
 DBG_EV_PORT_TIMESTAMP        = 8
@@ -19,20 +19,68 @@ DBG_EV_PORT_FIRST_USER_EVENT = 20
 
 
 
-class AddressResolver(object):
+class Address2LineResolver(object):
     """This encapsulates a subprocess to get addr2line info from the elf file, to
     convert raw address values to file:line references."""
 
-    def __init__(self, elfFile):
-        "docstring"
-        self._p = Popen(['addr2line', '-e', elfFile], universal_newlines=True, stdin=PIPE, stdout=PIPE) 
+    def __init__(self, elfFile=None):
+        if elfFile:
+            self._p = Popen(['addr2line', '-e', elfFile], universal_newlines=True, stdin=PIPE, stdout=PIPE) 
+        else:
+            self._p = None
 
     def resolve(self, addr):
-        addrTxt = "{}\n".format(hex(addr))
-        self._p.stdin.write(addrTxt)
-        self._p.stdin.flush()
-        return self._p.stdout.readline()
+        if self._p:
+            addrTxt = "{}\n".format(hex(addr))
+            self._p.stdin.write(addrTxt)
+            self._p.stdin.flush()
+            return self._p.stdout.readline()
+        else:
+            return ""
 
+class Address2SymbolResolver(object):
+    """This encapsulates a map to get symbol info from the elf file, to
+    convert raw address values to symbol text."""
+
+    def __init__(self, elfFile=None):
+        self._addr2sym = {}
+        if elfFile:
+            outputBytes = run(["nm", "-S", elfFile], stdout=PIPE).stdout.split(b'\n')
+            output = [l.decode("utf-8") for l in outputBytes]
+            for l in output:
+                symData = l.split(' ')
+                if len(symData) == 4 and symData[2] in "tTdDwWbB":
+                    # is a valid symbol record, grab it
+                    self._addr2sym[int(symData[0],16)] = {"sym": symData[3], "section": symData[2], "size": int(symData[1], 16) }
+
+    def addr2size(self, addr):
+        rec = self.addr2sym(addr)
+        if rec:
+            return rec['size']
+        else:
+            return None
+
+    def addr2name(self, addr):
+        rec = self.addr2sym(addr)
+        if rec:
+            return rec['sym']
+        else:
+            return None
+
+    def name2addr(self, name):
+        for k in self._addr2sym:
+            if self._addr2sym[k]['sym'] == name:
+                return k
+        return None
+
+    def name2size(self, name):
+        for k in self._addr2sym:
+            if self._addr2sym[k]['sym'] == name:
+                return self._addr2sym[k]['size']
+        return None
+
+    def addr2sym(self, addr):
+        return self._addr2sym.get(addr, None)
 
 class State:
     def onEntry(self, me):
@@ -233,7 +281,7 @@ class TextOutput(object):
 
 
 class TPIUParser(object):
-    def __init__(self, elfFile):
+    def __init__(self, elfFile=None):
         self._sm = TPIUParserSM()
         #self._sm.setEventPrinting(False)
         self._sm.eventHandlers["SIT"] = self.onSIT
@@ -241,8 +289,8 @@ class TPIUParser(object):
         self._sm.eventHandlers["HSP_DATA_TRACE_DATA"] = self.onData
         self._term0 = TextOutput()
         self._timestamp = TimeStamp()
-        if elfFile:
-            self.addr2line = AddressResolver(elfFile)
+        self.addr2line = Address2LineResolver(elfFile)
+        self.addr2sym = Address2SymbolResolver(elfFile)
 
     def parseValue(self, intValue):
         self._sm.onRxByte(intValue)
@@ -266,7 +314,12 @@ class TPIUParser(object):
             writeDir = "<-"
         else:
             writeDir = "->"
-        print("DWT{}: {} {}".format(hsp.dwtIndex, writeDir, hsp.value))
+        name = self.addr2sym.addr2name(hsp.value)
+        if name:
+            fmt = " [{}]".format(name)
+        else:
+            fmt = ""
+        print("DWT{}: {} {}{}".format(hsp.dwtIndex, writeDir, hsp.value, fmt))
 
     def onSIT(self, ev, sit):
         # IF 0..7 do printf, null term for single, itoa for 2/4 bytes

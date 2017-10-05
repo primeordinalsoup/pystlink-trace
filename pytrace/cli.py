@@ -58,6 +58,7 @@ def run(xtal, baud, elf, sym0, addr0, size0):
     except Exception as e:
         print("NO STLINK! exiting. {}".format(e))
     else:
+        elfinspector = tpiuparser.Address2SymbolResolver(elf)
         if sym0 or addr0:
             # set the user provided explicit values (they override the symbol table)
             if addr0:
@@ -68,19 +69,10 @@ def run(xtal, baud, elf, sym0, addr0, size0):
                 size = int(size0)
             else:
                 size = None
-            outputBytes = subprocess.run(["nm", "-S", elf], stdout=subprocess.PIPE).stdout.split(b'\n')
-            output = [l.decode("utf-8") for l in outputBytes]
-            for l in output:
-                if sym0 in l:
-                    print("line [{}]".format(l))
-                    symData = l.split(' ')
-                    print(symData)
-                    addr = addr or int( symData[0], 16 )  # --addrn overrides address in map
-                    size = size or int( symData[1], 16 )  # --sizen overrides size in map
-                    print("GOT SYM!  {}\nsetting watch @addr: {} size {}".format(sym0, addr, size))
-                    break
             if not size:
                 size = 4  # no size0 or sym0 set, default to 4
+            addr = addr or elfinspector.name2addr(sym0)
+            size = size or elfinspector.name2size(sym0)
             trace.setWatch(0, addr, size=size, getPC=True)
         parser = tpiuparser.TPIUParser(elf)
 
