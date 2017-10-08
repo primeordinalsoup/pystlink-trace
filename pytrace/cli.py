@@ -42,7 +42,7 @@ class GracefulInterruptHandler(object):
         return True
     
 # NOTE: This version *must* match the pip package one in setup.py, please update them together!
-@click.version_option(version="1.0.0")
+@click.version_option(version="1.1.0")
 
 @click.command()
 @click.option('--xtal', default=72, help='XTAL frequency of target in MHz')
@@ -76,19 +76,21 @@ def run(xtal, baud, elf, sym0, addr0, size0):
             trace.setWatch(0, addr, size=size, getPC=True)
         parser = tpiuparser.TPIUParser(elf)
 
-        print("starting SWO")
-        trace.startSWO()  # while SWO active other calls than stopSWO and readSWO allowed
         with GracefulInterruptHandler() as h:
-            while True:
-                swo = trace.readSWO()
-                if swo:
-                    #print(swo)
-                    parser.parseBytes(swo)
-                if h.interrupted:
-                    print("CAUGHT Linux signal - terminating.")
-                    break
-        print("stopping SWO")
-        trace.stopSWO()
+            print("starting SWO")
+            trace.startSWO()  # while SWO active other calls than stopSWO and readSWO allowed
+            try:
+                while True:
+                    swo = trace.readSWO()
+                    if swo:
+                        parser.parseBytes(swo)
+                    if h.interrupted:
+                        print("CAUGHT Linux signal - terminating.")
+                        print("stopping SWO")
+                        trace.stopSWO()
+                        break
+            except:
+                trace.stopSWO()
 
 if __name__ == '__main__':
     run()

@@ -59,9 +59,10 @@ class StlinkTrace():
                 self._stlink.start_trace_rx(baud_rate_hz=self._swo_baud)
                 zeroCNT = 0
             else:
-                #try:
-                num = self._stlink.get_trace_buffered_count()
-                #except usb.core.USBError:
+                try:
+                    num = self._stlink.get_trace_buffered_count()
+                except:
+                    break;
                 #    num = 0
                 #    pass
                 if (num == 0):
