@@ -44,9 +44,9 @@ class GracefulInterruptHandler(object):
 class WatchPointManager(object):
     """Utility class to set up watchpoint from command line arguments."""
 
-    def __init__(self, trace, elf):
+    def __init__(self, trace, elves):
         self.trace = trace
-        self.elfinspector = tpiuparser.Address2SymbolResolver(elf)
+        self.elfinspector = tpiuparser.Address2SymbolResolver(elves)
 
     def setupWatch(self, index, sym, addr, size):
         # set the user provided explicit values (they override the symbol table)
@@ -66,12 +66,13 @@ class WatchPointManager(object):
 
 
 # NOTE: This version *must* match the pip package one in setup.py, please update them together!
-@click.version_option(version="1.1.1")
+@click.version_option(version="1.1.2")
 
 @click.command()
 @click.option('--xtal',  default=72,     help='XTAL frequency of target in MHz')
 @click.option('--baud',  default=250000, help='Baud rate for SWO from target (2000000 max)')
-@click.option('--elf',   default=None,   help='application loaded on target (for selecting watch variables)')
+@click.option('--elf0',  default=None,   help='an application loaded on target, eg bootstrapper (for selecting watch variables)')
+@click.option('--elf1',  default=None,   help='application loaded on target eg main app(for selecting watch variables)')
 @click.option('--sym0',  default=None,   help='symbol of memory to watch on DWT0')
 @click.option('--addr0', default=None,   help='address IN HEX to watch on DWT0')
 @click.option('--size0', default=None,   help='number of bytes IN DEC to watch on DWT0 (defaults to size in map constrained to 2**n OR 4 if addr set explicitly via --addr0)')
@@ -84,14 +85,14 @@ class WatchPointManager(object):
 @click.option('--sym3',  default=None,   help='symbol of memory to watch on DWT3')
 @click.option('--addr3', default=None,   help='address IN HEX to watch on DWT3')
 @click.option('--size3', default=None,   help='number of bytes IN DEC to watch on DWT3 (defaults to size in map constrained to 2**n OR 4 if addr set explicitly via --addr3)')
-def run(xtal, baud, elf, sym0, addr0, size0, sym1, addr1, size1, sym2, addr2, size2, sym3, addr3, size3):
+def run(xtal, baud, elf0, elf1, sym0, addr0, size0, sym1, addr1, size1, sym2, addr2, size2, sym3, addr3, size3):
     """Capture SWO trace output from stlink V2"""
     try:
         trace = stlinktrace.StlinkTrace(xtal, baud)
     except Exception as e:
         print("NO STLINK! exiting. {}".format(e))
     else:
-        watchPointMgr = WatchPointManager(trace, elf)
+        watchPointMgr = WatchPointManager(trace, (elf0, elf1))
         if sym0 or addr0:
             watchPointMgr.setupWatch(0, sym0, addr0, size0)
         if sym1 or addr1:
@@ -100,7 +101,7 @@ def run(xtal, baud, elf, sym0, addr0, size0, sym1, addr1, size1, sym2, addr2, si
             watchPointMgr.setupWatch(2, sym2, addr2, size2)
         if sym3 or addr3:
             watchPointMgr.setupWatch(3, sym3, addr3, size3)
-        parser = tpiuparser.TPIUParser(elf)
+        parser = tpiuparser.TPIUParser([elf0, elf1])
 
         with GracefulInterruptHandler() as h:
             print("starting SWO")

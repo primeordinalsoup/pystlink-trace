@@ -97,15 +97,15 @@ class StlinkTrace():
         
     def _setWatch(self, index):
         """ set the DWT(index) to the internally recorded setpoints. """
-        print("setting DWT{}:".format(index))
+        #print("setting DWT{}:".format(index))
         regOffset = 16 * index
         compRegAddr = 0xe0001020 + regOffset
-        print("setting comp;  {:08x}  <- {}".format(compRegAddr, self._DWT[index]['addr']))
+        #print("setting comp;  {:08x}  <- {}".format(compRegAddr, self._DWT[index]['addr']))
         self._stlink.set_mem32(compRegAddr, self._DWT[index]['addr'])      # DWT_COMPn
 
         addrBits = math.floor( math.log(self._DWT[index]['size'], 2) )
         maskRegAddr = 0xe0001024 + regOffset
-        print("setting mask reg: {:08x} <- {}".format(maskRegAddr, addrBits))
+        #print("setting mask reg: {:08x} <- {}".format(maskRegAddr, addrBits))
         self._stlink.set_mem32(maskRegAddr, addrBits)  # DWT_MASKn
 
         function = 0
@@ -116,7 +116,7 @@ class StlinkTrace():
         if self._DWT[index]['getOffset']:
             function |= 1 << 5
         funcRegAddr = 0xe0001028 + regOffset
-        print("setting function reg: {:08x} <- {}".format(funcRegAddr, function))
+        #print("setting function reg: {:08x} <- {}".format(funcRegAddr, function))
         self._stlink.set_mem32(funcRegAddr, function) # DWT_FUNCTIONn
 
     def setWatch(self, index, addr, size = 4, getData = True, getPC = False, getOffset = False):

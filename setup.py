@@ -15,7 +15,7 @@ with open('LICENSE.txt') as f:
 setup(
     name='pytrace',
     # NOTE: You *must* update the version number in pytrace/cli.py as well!
-    version='1.1.1',
+    version='1.1.2',
     description='tool to view SWO tracing output from an st-link V2 jtag dongle.',
     long_description=readme,
     author='Peter Kraak<pkraak@dynamiccontrols.com>',

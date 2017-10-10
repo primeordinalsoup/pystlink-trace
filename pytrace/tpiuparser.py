@@ -23,35 +23,45 @@ class Address2LineResolver(object):
     """This encapsulates a subprocess to get addr2line info from the elf file, to
     convert raw address values to file:line references."""
 
-    def __init__(self, elfFile=None):
-        if elfFile:
-            self._p = Popen(['addr2line', '-e', elfFile], universal_newlines=True, stdin=PIPE, stdout=PIPE) 
-        else:
-            self._p = None
+    def __init__(self, elfFiles=None):
+        self._p = []
+        for elf in elfFiles:
+            if elf:
+                # print("addr2line, adding {}".format(elf))
+                self._p.append(Popen(['addr2line', '-e', elf], universal_newlines=True, stdin=PIPE, stdout=PIPE))
 
     def resolve(self, addr):
-        if self._p:
-            addrTxt = "{}\n".format(hex(addr))
-            self._p.stdin.write(addrTxt)
-            self._p.stdin.flush()
-            return self._p.stdout.readline()
-        else:
-            return ""
+        for p in self._p:
+            if p:
+                addrTxt = "{}\n".format(hex(addr))
+                p.stdin.write(addrTxt)
+                p.stdin.flush()
+                line = p.stdout.readline().rstrip("\r\n")
+                # print("resolve got [{}]".format(line))
+                if line != "??:0":
+                    return line
+                else:
+                    continue
+            else:
+                return ""
+        return ""
 
 class Address2SymbolResolver(object):
     """This encapsulates a map to get symbol info from the elf file, to
     convert raw address values to symbol text."""
 
-    def __init__(self, elfFile=None):
+    def __init__(self, elfFiles=None):
         self._addr2sym = {}
-        if elfFile:
-            outputBytes = run(["nm", "-S", elfFile], stdout=PIPE).stdout.split(b'\n')
-            output = [l.decode("utf-8") for l in outputBytes]
-            for l in output:
-                symData = l.split(' ')
-                if len(symData) == 4 and symData[2] in "tTdDwWbB":
-                    # is a valid symbol record, grab it
-                    self._addr2sym[int(symData[0],16)] = {"sym": symData[3], "section": symData[2], "size": int(symData[1], 16) }
+        for elfFile in elfFiles:
+            if elfFile:
+                # print("addr2name, adding {}".format(elfFile))
+                outputBytes = run(["nm", "-S", elfFile], stdout=PIPE).stdout.split(b'\n')
+                output = [l.decode("utf-8") for l in outputBytes]
+                for l in output:
+                    symData = l.split(' ')
+                    if len(symData) == 4 and symData[2] in "tTdDwWbB":
+                        # is a valid symbol record, grab it
+                        self._addr2sym[int(symData[0],16)] = {"sym": symData[3], "section": symData[2], "size": int(symData[1], 16) }
 
     def addr2size(self, addr):
         rec = self.addr2sym(addr)
@@ -281,7 +291,7 @@ class TextOutput(object):
 
 
 class TPIUParser(object):
-    def __init__(self, elfFile=None):
+    def __init__(self, elfFiles=None):
         self._sm = TPIUParserSM()
         #self._sm.setEventPrinting(False)
         self._sm.eventHandlers["SIT"] = self.onSIT
@@ -290,8 +300,8 @@ class TPIUParser(object):
         self._sm.eventHandlers["HSP_DATA_TRACE_OFFSET"] = self.onOffset
         self._term0 = TextOutput()
         self._timestamp = TimeStamp()
-        self.addr2line = Address2LineResolver(elfFile)
-        self.addr2sym = Address2SymbolResolver(elfFile)
+        self.addr2line = Address2LineResolver(elfFiles)
+        self.addr2sym = Address2SymbolResolver(elfFiles)
 
     def parseValue(self, intValue):
         self._sm.onRxByte(intValue)
