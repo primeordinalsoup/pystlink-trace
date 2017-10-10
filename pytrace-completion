@@ -15,6 +15,8 @@ _pytrace() {
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
     opts="--help --xtal --baud --elf{0..1} --addr{0..3} --sym{0..3} --size{0..3}"
+    bauds="62500 125000 250000 500000 1000000 2000000"
+    freqs="200 72"
 
     if [[ ${cur} =~ ^-.* ]] ; then
         COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
@@ -24,6 +26,10 @@ _pytrace() {
         COMPREPLY=( $(compgen -W "${elves}" -- ${cur}) )
     elif [[ ${prev} =~ --sym ]]; then
         COMPREPLY=( $(compgen -W "${syms}" -- ${cur}) )
+    elif [[ ${prev} =~ --baud ]]; then
+        COMPREPLY=( $(compgen -W "${bauds}" -- ${cur}) )
+    elif [[ ${prev} =~ --xtal ]]; then
+        COMPREPLY=( $(compgen -W "${freqs}" -- ${cur}) )
     fi
 }
 
