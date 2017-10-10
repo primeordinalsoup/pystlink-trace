@@ -3,7 +3,7 @@ _pytrace() {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    opts="--xtal --baud --elf --addr{0..3} --sym{0..3} --size{0..3}"
+    opts="--help --xtal --baud --elf --addr{0..3} --sym{0..3} --size{0..3}"
 
     if [[ ${cur} =~ ^-.* ]] ; then
         COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )

@@ -69,7 +69,7 @@ class StlinkTrace():
                     zeroCnt += 1
                     if zeroCnt > 100:
                         # Stlink frozen? kick it.
-                        print("***** ST-Link FROZEN??!! - kicking it *****")
+                        #print("***** ST-Link FROZEN??!! - kicking it *****")
                         self._stlink.stop_trace_rx()
                         self._stlink.start_trace_rx(baud_rate_hz=self._swo_baud)
                         zeroCnt = 0
@@ -99,10 +99,15 @@ class StlinkTrace():
         """ set the DWT(index) to the internally recorded setpoints. """
         print("setting DWT{}:".format(index))
         regOffset = 16 * index
-        self._stlink.set_mem32(0xe0001020 + regOffset, self._DWT[index]['addr'])      # DWT_COMPn
+        compRegAddr = 0xe0001020 + regOffset
+        print("setting comp;  {:08x}  <- {}".format(compRegAddr, self._DWT[index]['addr']))
+        self._stlink.set_mem32(compRegAddr, self._DWT[index]['addr'])      # DWT_COMPn
+
         addrBits = math.floor( math.log(self._DWT[index]['size'], 2) )
-        print("setting watch0;  addr {}  bits {}".format(self._DWT[index]['addr'], addrBits))
-        self._stlink.set_mem32(0xe0001024 + regOffset, addrBits)  # DWT_MASKn
+        maskRegAddr = 0xe0001024 + regOffset
+        print("setting mask reg: {:08x} <- {}".format(maskRegAddr, addrBits))
+        self._stlink.set_mem32(maskRegAddr, addrBits)  # DWT_MASKn
+
         function = 0
         if self._DWT[index]['getPC']:
             function |= 1 << 0
@@ -110,13 +115,14 @@ class StlinkTrace():
             function |= 1 << 1
         if self._DWT[index]['getOffset']:
             function |= 1 << 5
-        print("setting function reg: {}".format(function))
-        self._stlink.set_mem32(0xe0001028 + regOffset, function) # DWT_FUNCTIONn
+        funcRegAddr = 0xe0001028 + regOffset
+        print("setting function reg: {:08x} <- {}".format(funcRegAddr, function))
+        self._stlink.set_mem32(funcRegAddr, function) # DWT_FUNCTIONn
 
     def setWatch(self, index, addr, size = 4, getData = True, getPC = False, getOffset = False):
         """ set the DWT(index) to watch data access of address.  can get SWO output for
         the data (read and write), the PC for the instruction that accessed the addr, and the
-        offset into the address block (address:size).  Not if requesting PC and offset you only
+        offset into the address block (address:size).  Note if requesting PC and offset you only
         get the offset due to limitations of the DWT. """
         self._DWT[index]['addr']      = addr
         self._DWT[index]['size']      = size

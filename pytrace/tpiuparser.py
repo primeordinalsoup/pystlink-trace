@@ -287,6 +287,7 @@ class TPIUParser(object):
         self._sm.eventHandlers["SIT"] = self.onSIT
         self._sm.eventHandlers["HSP_DATA_TRACE_PC"] = self.onPC
         self._sm.eventHandlers["HSP_DATA_TRACE_DATA"] = self.onData
+        self._sm.eventHandlers["HSP_DATA_TRACE_OFFSET"] = self.onOffset
         self._term0 = TextOutput()
         self._timestamp = TimeStamp()
         self.addr2line = Address2LineResolver(elfFile)
@@ -320,6 +321,10 @@ class TPIUParser(object):
         else:
             fmt = ""
         print("DWT{}: {} {}{}".format(hsp.dwtIndex, writeDir, hsp.value, fmt))
+
+    def onOffset(self, ev, hsp):
+        """Hardware Source Packet - data OFFSET event"""
+        print("DWT{}: R/W @ offset {:08x}".format(hsp.dwtIndex, hsp.value))
 
     def onSIT(self, ev, sit):
         # IF 0..7 do printf, null term for single, itoa for 2/4 bytes
