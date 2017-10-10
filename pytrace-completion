@@ -1,6 +1,17 @@
 _pytrace() {
     local cur prev opts
     COMPREPLY=()
+
+    # compose the list of valid syms in all elf file arguments so far
+    unset syms
+    for compw in "${COMP_WORDS[@]}" ; do
+        if [[ (${compw} =~ .*elf) && (-r ${compw}) ]] ; then
+           # compw is valid elf file so get its symbols
+           # now to complete --sym later
+           syms="${syms} $(nm -S ${compw} | awk '{if ($4) print $4;}')"
+        fi
+    done
+
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
     opts="--help --xtal --baud --elf{0..1} --addr{0..3} --sym{0..3} --size{0..3}"
@@ -11,11 +22,6 @@ _pytrace() {
     elif [[ (${prev} =~ --elf) || (${cur} =~ bld.*) ]]; then
         elves="$(find bld -iname *app*.elf)"
         COMPREPLY=( $(compgen -W "${elves}" -- ${cur}) )
-        if [[ -r ${COMPREPLY} ]]; then
-           # COMPREPLY is valid elf file so get its symbols
-           # now to complete --sym later
-           syms=$(nm -S ${COMPREPLY} | awk '{if ($4) print $4;}')
-        fi
     elif [[ ${prev} =~ --sym ]]; then
         COMPREPLY=( $(compgen -W "${syms}" -- ${cur}) )
     fi
