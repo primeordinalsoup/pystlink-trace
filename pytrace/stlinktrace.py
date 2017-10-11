@@ -105,7 +105,7 @@ class StlinkTrace():
 
         addrBits = math.floor( math.log(self._DWT[index]['size'], 2) )
         maskRegAddr = 0xe0001024 + regOffset
-        #print("setting mask reg: {:08x} <- {}".format(maskRegAddr, addrBits))
+        print("setting mask reg: {:08x} <- {},  size is [{}]".format(maskRegAddr, addrBits, self._DWT[index]['size']))
         self._stlink.set_mem32(maskRegAddr, addrBits)  # DWT_MASKn
 
         function = 0

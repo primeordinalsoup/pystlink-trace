@@ -14,9 +14,10 @@ _pytrace() {
 
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    opts="--help --xtal --baud --elf{0..1} --addr{0..3} --sym{0..3} --size{0..3}"
+    opts="--help --xtal --baud --elf{0..1} --addr{0..3} --sym{0..3} --size{0..3} --flags{0..3}"
     bauds="62500 125000 250000 500000 1000000 2000000"
     freqs="200 72"
+    flags="d dp dwu"
 
     if [[ ${cur} =~ ^-.* ]] ; then
         COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
@@ -30,8 +31,12 @@ _pytrace() {
         COMPREPLY=( $(compgen -W "${bauds}" -- ${cur}) )
     elif [[ ${prev} =~ --xtal ]]; then
         COMPREPLY=( $(compgen -W "${freqs}" -- ${cur}) )
+    elif [[ ${prev} =~ --flags ]]; then
+        COMPREPLY=( $(compgen -W "${flags}" -- ${cur}) )
     fi
 }
 
+# now the various ways we invoke pytrace
 complete -F _pytrace pytrace
 complete -F _pytrace python3 -u $(which pytrace)
+

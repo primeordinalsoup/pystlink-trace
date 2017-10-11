@@ -48,7 +48,7 @@ class WatchPointManager(object):
         self.trace = trace
         self.elfinspector = tpiuparser.Address2SymbolResolver(elves)
 
-    def setupWatch(self, index, sym, addr, size):
+    def setupWatch(self, index, sym, addr, size, flags):
         # set the user provided explicit values (they override the symbol table)
         if addr:
             addr = int(addr,16)
@@ -58,34 +58,38 @@ class WatchPointManager(object):
             size = 4  # no size or sym set, default to 4
         addr = addr or self.elfinspector.name2addr(sym)
         size = size or self.elfinspector.name2size(sym)
-        if size != 4:
-            getOffset = True
-        else:
-            getOffset = False
-        self.trace.setWatch(index, addr, size=size, getData=True, getPC=True, getOffset=getOffset)
+
+        getData = 'd' in flags
+        getPC = 'p' in flags
+        getOffset = 'o' in flags
+        self.trace.setWatch(index, addr, size=size, getData=getData, getPC=getPC, getOffset=getOffset)
 
 
 # NOTE: This version *must* match the pip package one in setup.py, please update them together!
-@click.version_option(version="1.1.2")
+@click.version_option(version="1.2.0")
 
 @click.command()
-@click.option('--xtal',  default=72,     help='XTAL frequency of target in MHz')
-@click.option('--baud',  default=250000, help='Baud rate for SWO from target (2000000 max)')
-@click.option('--elf0',  default=None,   help='an application loaded on target, eg bootstrapper (for selecting watch variables)')
-@click.option('--elf1',  default=None,   help='application loaded on target eg main app(for selecting watch variables)')
-@click.option('--sym0',  default=None,   help='symbol of memory to watch on DWT0')
-@click.option('--addr0', default=None,   help='address IN HEX to watch on DWT0')
-@click.option('--size0', default=None,   help='number of bytes IN DEC to watch on DWT0 (defaults to size in map constrained to 2**n OR 4 if addr set explicitly via --addr0)')
-@click.option('--sym1',  default=None,   help='symbol of memory to watch on DWT1')
-@click.option('--addr1', default=None,   help='address IN HEX to watch on DWT1')
-@click.option('--size1', default=None,   help='number of bytes IN DEC to watch on DWT1 (defaults to size in map constrained to 2**n OR 4 if addr set explicitly via --addr1)')
-@click.option('--sym2',  default=None,   help='symbol of memory to watch on DWT2')
-@click.option('--addr2', default=None,   help='address IN HEX to watch on DWT2')
-@click.option('--size2', default=None,   help='number of bytes IN DEC to watch on DWT2 (defaults to size in map constrained to 2**n OR 4 if addr set explicitly via --addr2)')
-@click.option('--sym3',  default=None,   help='symbol of memory to watch on DWT3')
-@click.option('--addr3', default=None,   help='address IN HEX to watch on DWT3')
-@click.option('--size3', default=None,   help='number of bytes IN DEC to watch on DWT3 (defaults to size in map constrained to 2**n OR 4 if addr set explicitly via --addr3)')
-def run(xtal, baud, elf0, elf1, sym0, addr0, size0, sym1, addr1, size1, sym2, addr2, size2, sym3, addr3, size3):
+@click.option('--xtal',   default=72,     help='XTAL frequency of target in MHz')
+@click.option('--baud',   default=500000, help='Baud rate for SWO from target (2000000 max)')
+@click.option('--elf0',   default=None,   help='an application loaded on target, eg bootstrapper (for selecting watch variables)')
+@click.option('--elf1',   default=None,   help='application loaded on target eg main app(for selecting watch variables)')
+@click.option('--sym0',   default=None,   help='symbol of memory to watch on DWT0')
+@click.option('--addr0',  default=None,   help='address IN HEX to watch on DWT0')
+@click.option('--size0',  default=None,   help='number of bytes IN DEC to watch on DWT0 (defaults to size in map constrained to 2**n OR 4 if addr set explicitly via --addr0)')
+@click.option('--flags0', default="dp",   help='flags to control DWT reporting, d: data, p: PC, o: offset, r: reads, w: writes, u: unique only')
+@click.option('--sym1',   default=None,   help='symbol of memory to watch on DWT1')
+@click.option('--addr1',  default=None,   help='address IN HEX to watch on DWT1')
+@click.option('--size1',  default=None,   help='number of bytes IN DEC to watch on DWT1 (defaults to size in map constrained to 2**n OR 4 if addr set explicitly via --addr1)')
+@click.option('--flags1', default="dp",   help='flags to control DWT reporting, d: data, p: PC, o: offset, r: reads, w: writes, u: unique only')
+@click.option('--sym2',   default=None,   help='symbol of memory to watch on DWT2')
+@click.option('--addr2',  default=None,   help='address IN HEX to watch on DWT2')
+@click.option('--size2',  default=None,   help='number of bytes IN DEC to watch on DWT2 (defaults to size in map constrained to 2**n OR 4 if addr set explicitly via --addr2)')
+@click.option('--flags2', default="dp",   help='flags to control DWT reporting, d: data, p: PC, o: offset, r: reads, w: writes, u: unique only')
+@click.option('--sym3',   default=None,   help='symbol of memory to watch on DWT3')
+@click.option('--addr3',  default=None,   help='address IN HEX to watch on DWT3')
+@click.option('--size3',  default=None,   help='number of bytes IN DEC to watch on DWT3 (defaults to size in map constrained to 2**n OR 4 if addr set explicitly via --addr3)')
+@click.option('--flags3', default="dp",   help='flags to control DWT reporting, d: data, p: PC, o: offset, r: reads, w: writes, u: unique only')
+def run(xtal, baud, elf0, elf1, sym0, addr0, size0, sym1, addr1, size1, sym2, addr2, size2, sym3, addr3, size3, flags0, flags1, flags2, flags3):
     """Capture SWO trace output from stlink V2"""
     try:
         trace = stlinktrace.StlinkTrace(xtal, baud)
@@ -94,14 +98,14 @@ def run(xtal, baud, elf0, elf1, sym0, addr0, size0, sym1, addr1, size1, sym2, ad
     else:
         watchPointMgr = WatchPointManager(trace, (elf0, elf1))
         if sym0 or addr0:
-            watchPointMgr.setupWatch(0, sym0, addr0, size0)
+            watchPointMgr.setupWatch(0, sym0, addr0, size0, flags0)
         if sym1 or addr1:
-            watchPointMgr.setupWatch(1, sym1, addr1, size1)
+            watchPointMgr.setupWatch(1, sym1, addr1, size1, flags1)
         if sym2 or addr2:
-            watchPointMgr.setupWatch(2, sym2, addr2, size2)
+            watchPointMgr.setupWatch(2, sym2, addr2, size2, flags2)
         if sym3 or addr3:
-            watchPointMgr.setupWatch(3, sym3, addr3, size3)
-        parser = tpiuparser.TPIUParser([elf0, elf1])
+            watchPointMgr.setupWatch(3, sym3, addr3, size3, flags3)
+        parser = tpiuparser.TPIUParser([sym0, sym1, sym2, sym3], [flags0, flags1, flags2, flags3], [elf0, elf1])
 
         with GracefulInterruptHandler() as h:
             print("starting SWO")

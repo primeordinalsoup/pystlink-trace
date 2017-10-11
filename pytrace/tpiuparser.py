@@ -76,6 +76,13 @@ class Address2SymbolResolver(object):
             return rec['sym']
         else:
             return None
+        
+    def addr2FormattedName(self, addr):
+        name = self.addr2name(addr)
+        if name:
+            return " [{}]".format(name)
+        else:
+            return ""
 
     def name2addr(self, name):
         for k in self._addr2sym:
@@ -202,14 +209,14 @@ class _WaitingForHeader(State):
         elif ((byte & 0x03) != 0x00) and ((byte & 0x04) == 0x04):
             size = (2 ** (2+(byte & 0x03))) >> 3
             disc = (0xf8 & byte) >> 3
-            #me.onEvent("HARDWARE SRC", "payload length {}".format(size))
             me.trans(_HardwareBody(disc, size))
         elif ((byte & 0x03) != 0x00) and ((byte & 0x04) == 0x00):
             size = (2 ** (2+(byte & 0x03))) >> 3
             chan = (0xf8 & byte) >> 3
-            #me.onEvent("SOFTWARE SRC", "payload length {}".format(size))
             me.trans(_SoftwareBody(chan, size))
-
+        else:
+            me.onEvent("DUFFBYTE", "{:02x}".format(byte))
+            
 class _SoftwareBody(State):
     def __init__(self, channel, payloadLth):
         self.len = payloadLth
@@ -240,6 +247,7 @@ class TimeStamp(object):
     def __init__(self):
         self.time_50us = 0  # continuously incrementing value
         self.lastDiff = 0
+        self._time_s = 0
 
     def update8(self, u8):
         """ increment timestamp using the 8bit modulo
@@ -251,6 +259,7 @@ class TimeStamp(object):
     def update16(self, u16):
         """ increment timestamp using the 8bit modulo
         (LSB) of the 50us timer on the target. """
+        self._time_s += 0.01  # hack to count timer update msgs, as modulo addition not working
         self.lastDiff = (u16 - (self.time_50us & 0xffff)) % 0x10000
         self.time_50us += self.lastDiff
         if (self.time_50us == self.lastDiff):
@@ -261,7 +270,9 @@ class TimeStamp(object):
 
     def fmtAbs(self):
         time_us = self.time_50us * 50
-        return "[{:03}.{:06}]".format(time_us/1000000, time_us%1000000)
+        return "[{:07.2f}]".format(self._time_s)
+        #return "[{:03}.{:06}]".format(time_us/1000000, time_us%1000000)
+        #return "[{}]".format(time_us/1000000)
 
     def fmtDiff(self):
         return "[   +{:06}]".format(self.lastDiff*50)
@@ -291,15 +302,24 @@ class TextOutput(object):
 
 
 class TPIUParser(object):
-    def __init__(self, elfFiles=None):
+    def __init__(self, syms, flags, elfFiles=None):
         self._sm = TPIUParserSM()
-        #self._sm.setEventPrinting(False)
+        self.syms = syms
+        self._overflows = 0
+        self._sm.setEventPrinting(False)
         self._sm.eventHandlers["SIT"] = self.onSIT
         self._sm.eventHandlers["HSP_DATA_TRACE_PC"] = self.onPC
         self._sm.eventHandlers["HSP_DATA_TRACE_DATA"] = self.onData
+        self._sm.eventHandlers["Overflow"] = self.onOverflow
+        # next ones disabled for now as not used and noise/berr sets them off
         self._sm.eventHandlers["HSP_DATA_TRACE_OFFSET"] = self.onOffset
+        #self._sm.eventHandlers["HSP_UNKNOWN"] = self.onUnknown
         self._term0 = TextOutput()
         self._timestamp = TimeStamp()
+        self._displayDataRead = ['r' in flag for flag in flags]
+        self._displayDataWrite = ['w' in flag for flag in flags]
+        self._dataUnique = ['u' in flag for flag in flags]
+        self._lastData = [None for i in range(4)]
         self.addr2line = Address2LineResolver(elfFiles)
         self.addr2sym = Address2SymbolResolver(elfFiles)
 
@@ -311,6 +331,15 @@ class TPIUParser(object):
             # iterate bytesarray gives INTS
             self.parseValue(intValue)
 
+    def onOverflow(self, ev, data):
+        self._overflows += 1
+        if self._overflows > 30:
+            self._overflows = 0
+            print("!! getting overflows, increase baudrate or reduce tracing load.")
+    
+    def onUnknown(self, ev, hsp):
+        print("UNKNOWN: disc {:02x} len {}".format(hsp.discriminator, hsp.expectedLth))
+        
     def onPC(self, ev, hsp):
         """Hardware Source Packet - PC value event"""
         if self.addr2line:
@@ -321,16 +350,25 @@ class TPIUParser(object):
 
     def onData(self, ev, hsp):
         """Hardware Source Packet - data value event"""
+        index = hsp.dwtIndex
         if hsp.isWrite:
+            if not self._displayDataWrite[index]:
+                return
             writeDir = "<-"
         else:
+            if not self._displayDataRead[index]:
+                return
             writeDir = "->"
-        name = self.addr2sym.addr2name(hsp.value)
-        if name:
-            fmt = " [{}]".format(name)
+        if self.syms[index]:
+            dest = self.syms[index]
         else:
-            fmt = ""
-        print("DWT{}: {} {}{}".format(hsp.dwtIndex, writeDir, hsp.value, fmt))
+            dest = "DWT{}".format(index)
+        output = "DWT{}: {} {} {:02x}{}".format(index, dest, writeDir, hsp.value, self.addr2sym.addr2FormattedName(hsp.value))
+        if self._dataUnique[index] and self._lastData[index] != hsp.value:
+            print(output)
+            self._lastData[index] = hsp.value
+        elif not self._dataUnique[index]:
+            print(output)
 
     def onOffset(self, ev, hsp):
         """Hardware Source Packet - data OFFSET event"""
@@ -354,12 +392,13 @@ class TPIUParser(object):
         elif sit.chan == DBG_EV_PORT_TIMESTAMP:
             #timestamp
             self._timestamp.update16(sit.sum)
-            #print("{}  timer update".format(self._timestamp.fmtAbs()))
+            print("{}  timer update".format(self._timestamp.fmtAbs()))
         elif sit.chan == DBG_EV_PORT_QFSIGDISPATCH:
             #qf dispatch
             if sit.lth == 1:
                 # timestamp byte
                 self._timestamp.update8(sit.sum)
+                pass
             elif sit.lth == 4:
                 # AO index plus signum
                 ao = sit.data[3]
@@ -371,7 +410,8 @@ class TPIUParser(object):
             if sit.lth == 1:
                 # timestamp byte
                 self._timestamp.update8(sit.sum)
+                pass
             elif sit.lth == 4:
-                # AO index plus signum
+                # address of new state
                 addr = sit.sum
-                print("{}  QTRAN addr {:08x}".format(self._timestamp.fmtDiff(), addr))
+                print("{}  QTRAN addr {:08x}{}".format(self._timestamp.fmtAbs(), addr, self.addr2sym.addr2FormattedName(addr)))
