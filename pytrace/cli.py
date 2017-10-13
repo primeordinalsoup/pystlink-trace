@@ -66,11 +66,11 @@ class WatchPointManager(object):
 
 
 # NOTE: This version *must* match the pip package one in setup.py, please update them together!
-@click.version_option(version="1.2.0")
+@click.version_option(version="1.2.1")
 
 @click.command()
 @click.option('--xtal',   default=72,     help='XTAL frequency of target in MHz')
-@click.option('--baud',   default=500000, help='Baud rate for SWO from target (2000000 max)')
+@click.option('--baud',   default=250000, help='Baud rate for SWO from target (2000000 max)')
 @click.option('--elf0',   default=None,   help='an application loaded on target, eg bootstrapper (for selecting watch variables)')
 @click.option('--elf1',   default=None,   help='application loaded on target eg main app(for selecting watch variables)')
 @click.option('--sym0',   default=None,   help='symbol of memory to watch on DWT0')

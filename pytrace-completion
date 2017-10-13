@@ -40,3 +40,8 @@ _pytrace() {
 complete -F _pytrace pytrace
 complete -F _pytrace python3 -u $(which pytrace)
 
+
+# now some cheek; let bash completion script set some aliae;
+alias pytrace='python3 -u $(which pytrace)'
+alias ptd-remre='python3 -u $(which pytrace) --elf0 bld/arm-Debug-remre_eprax/remote/tgt/remre/busApp/busApp-REMRE.elf --elf1 bld/arm-Debug-remre_eprax/remote/tgt/remre/bootstrapper/remre/bootstrapper-REMRE.elf --xtal 200'
+alias ptd-pmal='python3 -u $(which pytrace) --elf0 bld/arm-Debug-pmal_epra1/powermodule/tgt/pmal/bootstrapper/pmal/bootstrapper-PMAL.elf --elf1 bld/arm-Debug-pmal_epra1/powermodule/tgt/pmal/app/app-PMAL.elf'
