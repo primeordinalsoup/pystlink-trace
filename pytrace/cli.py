@@ -66,7 +66,7 @@ class WatchPointManager(object):
 
 
 # NOTE: This version *must* match the pip package one in setup.py, please update them together!
-@click.version_option(version="1.2.1")
+@click.version_option(version="1.3.0")
 
 @click.command()
 @click.option('--xtal',   default=72,     help='XTAL frequency of target in MHz')

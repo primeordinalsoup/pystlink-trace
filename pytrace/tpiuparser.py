@@ -278,27 +278,18 @@ class TimeStamp(object):
         return "[   +{:06}]".format(self.lastDiff*50)
 
 class TextOutput(object):
-    """ manages a single channel's text output, collating
-        and formatting it until a '\n'."""
-    def __init__(self):
-        self.line = ""
-        self._terminated = False
-
+    """ formats single chars and integers to the terminal, including
+        translating \n into correct EOL """
     def update8(self, u8):
         if u8 == ord('\n'):
-            self._terminated = True
+            # embedded uses \n as newline, let python decide what is EOL
+            print("")
         else:
-            self.line += chr(u8)
+            # print the single ascii char WITHOUT newline
+            print(chr(u8), end="")
 
     def updateInt(self, u):
-        self.line += "{}({})".format(u, hex(u))
-
-    def reset(self):
-        self.line = ""
-        self._terminated = False
-
-    def isComplete(self):
-        return self._terminated
+        print( "{}({})".format(u, hex(u)) )
 
 
 class TPIUParser(object):
@@ -379,13 +370,8 @@ class TPIUParser(object):
         # NOTE: we only use a single term0 for all 8 channel, need an array of them.
         if sit.chan < 8:
             if sit.lth == 1:
-                # normal printable char (or line ending)
+                # normal printable single char (or line ending)
                 self._term0.update8(sit.data[0])
-                if self._term0.isComplete():
-                    # output the completed line
-                    print(self._term0.line)
-                    #print("{}{}".format(self._timestamp.fmtDiff(), self._term0.line))
-                    self._term0.reset()
             elif (sit.lth == 2) or (sit.lth == 4):
                 # text output VALUE, format as dec(hex)
                 self._term0.updateInt(sit.sum)
