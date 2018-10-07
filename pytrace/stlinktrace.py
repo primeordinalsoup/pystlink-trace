@@ -9,21 +9,20 @@ import math
 import time
 import queue, threading
 import copy
-#import usb
 
 class StlinkTrace():
     """ST-Link SWO tracing class.
     This knows how to manage the arm Cortex-M ITM and TPIU via
-    an ST-Link usb JTAG dongle as accessed by pyswd class (sold separately)."""
+    an ST-Link usb JTAG dongle as accessed by pyswd class (provided by pyswd module)."""
 
     def __init__(self, xtal_MHz=72, swo_baud=250000):
         self._stlink = stlink.Stlink()
         s = self._stlink.version.str
         self._xtal_MHz = xtal_MHz
         self._swo_baud = swo_baud
-        print(s)
-        print(self._stlink.get_target_voltage())
-        print(hex(self._stlink.get_coreid()))
+        self._DWT_CTRL_SHADOW = 0
+        self._exception_tracing = False
+        self._profiling = False
         # we remember all DWT settings for auto resetting after power cycles
         self._DWT = []
         # all False gives function value of 0, i.e. DWT disabled.
@@ -32,6 +31,10 @@ class StlinkTrace():
             self._DWT.append(copy.deepcopy(dfltDWT))
 
         self._setupSWOTracing(self._xtal_MHz, self._swo_baud)
+        self._setAllWatches()
+        self._setExceptionTracing()
+        self._setProfiling()
+        self._readingSWO = False
         self._readingSWO = False
         self._queue = queue.Queue()
         self._thread = threading.Thread(target=self._pumpSWO)
@@ -46,10 +49,10 @@ class StlinkTrace():
         while self._readingSWO:
             v = self._stlink.get_target_voltage()
             if v < 1:
-                print("powered OFF! - waiting for power up")
+                #print("powered OFF! - waiting for power up")
                 while self._stlink.get_target_voltage() < 3:
                     pass
-                print("target powered on!")
+                #print("target powered on!")
                 time.sleep(0.1)
                 self._stlink.leave_state()
                 self._stlink.enter_debug_swd()
@@ -91,6 +94,12 @@ class StlinkTrace():
             data = None
         return data
 
+    def getCoreID(self):
+        return self._stlink.get_coreid()
+
+    def getTargetVoltage(self):
+        return self._stlink.get_target_voltage()
+
     def _setAllWatches(self):
         for i in range(4):
             self._setWatch(i)
@@ -105,7 +114,7 @@ class StlinkTrace():
 
         addrBits = math.floor( math.log(self._DWT[index]['size'], 2) )
         maskRegAddr = 0xe0001024 + regOffset
-        print("setting mask reg: {:08x} <- {},  size is [{}]".format(maskRegAddr, addrBits, self._DWT[index]['size']))
+        # print("setting mask reg: {:08x} <- {},  size is [{}]".format(maskRegAddr, addrBits, self._DWT[index]['size']))
         self._stlink.set_mem32(maskRegAddr, addrBits)  # DWT_MASKn
 
         function = 0
@@ -118,6 +127,52 @@ class StlinkTrace():
         funcRegAddr = 0xe0001028 + regOffset
         #print("setting function reg: {:08x} <- {}".format(funcRegAddr, function))
         self._stlink.set_mem32(funcRegAddr, function) # DWT_FUNCTIONn
+
+    def _clearDWTCTRLShadowBits(self, bitmask):
+        complement32 = bitmask ^ 0xffffffff
+        self._DWT_CTRL_SHADOW &= complement32
+
+    def _setDWTCTRLShadowBits(self, bitmask):
+        self._DWT_CTRL_SHADOW |= bitmask
+
+    def _applyDWTCTRLRegisterShadow(self):
+        self._stlink.set_mem32(0xe0001000, self._DWT_CTRL_SHADOW)
+
+    def _setExceptionTracing(self):
+        if (self._exception_tracing):
+            self._setDWTCTRLShadowBits(0x00010000)
+        else:
+            self._clearDWTCTRLShadowBits(0x00010000)
+        self._applyDWTCTRLRegisterShadow()
+
+    def _setProfiling(self, PC_sample_reload=15):
+        PC_sample_field = PC_sample_reload & 0x0F
+        PC_sample_field <<= 1
+        PC_sample_mask = 0x1E  # bits 4..1
+        if (self._profiling):
+            # set sample reload, larger number is slower sampling
+            self._clearDWTCTRLShadowBits(PC_sample_mask)
+            self._setDWTCTRLShadowBits(PC_sample_field)
+            # enable bit12, PCSAMPLEENA
+            self._setDWTCTRLShadowBits(0x00001000)
+            # enable bit9, CYTAP=1, use processor clock/1024 for sample clock (0 is hclk/64)
+            self._setDWTCTRLShadowBits(0x00000200)
+            # enable bit0, CYCCNTENA
+            self._setDWTCTRLShadowBits(0x00000001)
+        else:
+            # disable bit12, PCSAMPLEENA
+            self._clearDWTCTRLShadowBits(0x00001000)
+            # disable bit0, CYCCNTENA
+            self._clearDWTCTRLShadowBits(0x00000001)
+        self._applyDWTCTRLRegisterShadow()
+
+    def setExceptionTracing(self, enable_tracing):
+        self._exception_tracing = enable_tracing
+        self._setExceptionTracing()
+
+    def setProfiling(self, enable_profiling):
+        self._profiling = enable_profiling
+        self._setProfiling()
 
     def setWatch(self, index, addr, size = 4, getData = True, getPC = False, getOffset = False):
         """ set the DWT(index) to watch data access of address.  can get SWO output for
@@ -141,6 +196,10 @@ class StlinkTrace():
         self._stlink.set_mem32(0xe00400f0, 0x00000002)
         self._stlink.set_mem32(0xe0040304, 0x00000100)
         self._stlink.set_mem32(0xe0042004, 0x00000327)
+
+        # set the PC sampling and exception tracing up, in DWT_CTRL
+        self._stlink.set_mem32(0xe0001000, self._DWT_CTRL_SHADOW)
+
         self._stlink.set_mem32(0xe0000fb0, 0xc5acce55)
         self._stlink.set_mem32(0xe0000e80, 0x00010009)
         self._stlink.set_mem32(0xe0000e00, 0xffffffff)

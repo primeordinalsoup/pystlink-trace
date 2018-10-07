@@ -28,7 +28,7 @@ class Address2LineResolver(object):
         for elf in elfFiles:
             if elf:
                 # print("addr2line, adding {}".format(elf))
-                self._p.append(Popen(['addr2line', '-e', elf], universal_newlines=True, stdin=PIPE, stdout=PIPE))
+                self._p.append(Popen(['addr2line', '-f', '-e', elf], universal_newlines=True, stdin=PIPE, stdout=PIPE))
 
     def resolve(self, addr):
         for p in self._p:
@@ -36,9 +36,10 @@ class Address2LineResolver(object):
                 addrTxt = "{}\n".format(hex(addr))
                 p.stdin.write(addrTxt)
                 p.stdin.flush()
-                line = p.stdout.readline().rstrip("\r\n")
+                line = p.stdout.readline().rstrip("\r\n")   # FUNCTION name (-f switch) or '??'
+                discard = p.stdout.readline().rstrip("\r\n")  # file:linenumber or '??:0'
                 # print("resolve got [{}]".format(line))
-                if line != "??:0":
+                if line != "??":
                     return line
                 else:
                     continue
@@ -293,12 +294,17 @@ class TextOutput(object):
 
 
 class TPIUParser(object):
+    """ For details of the TPIU protocol see the Armv7-M Architecture Reference Manual """
+    gprof_hist = {}
+
     def __init__(self, syms, flags, elfFiles=None):
         self._sm = TPIUParserSM()
         self.syms = syms
         self._overflows = 0
         self._sm.setEventPrinting(False)
         self._sm.eventHandlers["SIT"] = self.onSIT
+        self._sm.eventHandlers["HSP_PC_SAMPLE"] = self.onPC
+        self._sm.eventHandlers["HSP_EXCEPTION_TRACE"] = self.onExcTrace
         self._sm.eventHandlers["HSP_DATA_TRACE_PC"] = self.onPC
         self._sm.eventHandlers["HSP_DATA_TRACE_DATA"] = self.onData
         self._sm.eventHandlers["Overflow"] = self.onOverflow
@@ -314,6 +320,16 @@ class TPIUParser(object):
         self.addr2line = Address2LineResolver(elfFiles)
         self.addr2sym = Address2SymbolResolver(elfFiles)
 
+    def getGprof(self):
+        # return list(self.gprof_hist)
+        #  TODO: use sorted() with custom 'key' function
+        #  to creat list of k,v tuples sorted by value, so
+        #  we can display ranked list.  ALSO remove
+        #  provided 'idle' function eg prvIdleTask.lto_priv.407
+        #  for POD (pass in by cli argument), and list it separately
+        #  so we can show CPU gas gauge, i.e. percent busy/idle
+        return self.gprof_hist
+
     def parseValue(self, intValue):
         self._sm.onRxByte(intValue)
         
@@ -324,17 +340,31 @@ class TPIUParser(object):
 
     def onOverflow(self, ev, data):
         self._overflows += 1
-        if self._overflows > 30:
+        if self._overflows > 50:
             self._overflows = 0
             print("!! getting overflows, increase baudrate or reduce tracing load.")
     
     def onUnknown(self, ev, hsp):
         print("UNKNOWN: disc {:02x} len {}".format(hsp.discriminator, hsp.expectedLth))
         
+    def onExcTrace(self, ev, hsp):
+        """Hardware Source Packet - Exception Trace value event"""
+        exc_number = hsp.data[0]  # exception number bits 7..0
+        # blend in bit8 of exception number (from next byte)
+        bit8 = hsp.data[1] & 0x01
+        exc_number += bit8 << 8
+        # get 'function', i.e. what is happening with this exception
+        exc_func = (hsp.data[1] & 0x30) >> 4
+        func_map = ["RESERVED", "ENTER", "EXIT", "RE-ENTER"]
+        print("EXC: {}: {}".format(exc_number-16, func_map[exc_func]))
+
     def onPC(self, ev, hsp):
         """Hardware Source Packet - PC value event"""
         if self.addr2line:
-            where = "# " + self.addr2line.resolve(hsp.value).rstrip("\r\n")
+            function_name = self.addr2line.resolve(hsp.value).rstrip("\r\n")
+            # increment histogram bin for this function
+            self.gprof_hist[function_name] = self.gprof_hist.get(function_name, 0) + 1
+            where = "# " + function_name
         else:
             where = ""
         print("PC: {:08x} {}".format(hsp.value, where))

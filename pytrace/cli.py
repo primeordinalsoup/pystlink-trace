@@ -66,11 +66,13 @@ class WatchPointManager(object):
 
 
 # NOTE: This version *must* match the pip package one in setup.py, please update them together!
-@click.version_option(version="1.3.0")
+@click.version_option(version="1.4.0")
 
 @click.command()
 @click.option('--xtal',   default=72,     help='XTAL frequency of target in MHz')
 @click.option('--baud',   default=250000, help='Baud rate for SWO from target (2000000 max)')
+@click.option('--isr',    default=0,      help='trace EXCEPTIONS')
+@click.option('--prof',   default=0,      help='sample PC and profile CPU usage')
 @click.option('--elf0',   default=None,   help='an application loaded on target, eg bootstrapper (for selecting watch variables)')
 @click.option('--elf1',   default=None,   help='application loaded on target eg main app(for selecting watch variables)')
 @click.option('--sym0',   default=None,   help='symbol of memory to watch on DWT0')
@@ -89,7 +91,7 @@ class WatchPointManager(object):
 @click.option('--addr3',  default=None,   help='address IN HEX to watch on DWT3')
 @click.option('--size3',  default=None,   help='number of bytes IN DEC to watch on DWT3 (defaults to size in map constrained to 2**n OR 4 if addr set explicitly via --addr3)')
 @click.option('--flags3', default="dp",   help='flags to control DWT reporting, d: data, p: PC, o: offset, r: reads, w: writes, u: unique only')
-def run(xtal, baud, elf0, elf1, sym0, addr0, size0, sym1, addr1, size1, sym2, addr2, size2, sym3, addr3, size3, flags0, flags1, flags2, flags3):
+def run(xtal, baud, isr, prof, elf0, elf1, sym0, addr0, size0, sym1, addr1, size1, sym2, addr2, size2, sym3, addr3, size3, flags0, flags1, flags2, flags3):
     """Capture SWO trace output from stlink V2"""
     try:
         trace = stlinktrace.StlinkTrace(xtal, baud)
@@ -105,10 +107,11 @@ def run(xtal, baud, elf0, elf1, sym0, addr0, size0, sym1, addr1, size1, sym2, ad
             watchPointMgr.setupWatch(2, sym2, addr2, size2, flags2)
         if sym3 or addr3:
             watchPointMgr.setupWatch(3, sym3, addr3, size3, flags3)
+        trace.setExceptionTracing(isr)
+        trace.setProfiling(prof)
         parser = tpiuparser.TPIUParser([sym0, sym1, sym2, sym3], [flags0, flags1, flags2, flags3], [elf0, elf1])
 
         with GracefulInterruptHandler() as h:
-            print("starting SWO")
             trace.startSWO()  # while SWO active NO other calls than stopSWO and readSWO allowed
             try:
                 while True:
@@ -122,6 +125,7 @@ def run(xtal, baud, elf0, elf1, sym0, addr0, size0, sym1, addr1, size1, sym2, ad
                         break
             except:
                 trace.stopSWO()
+        print("we got:\n{}".format(parser.getGprof()))
 
 if __name__ == '__main__':
     run()
