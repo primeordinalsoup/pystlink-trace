@@ -14,6 +14,7 @@ _pytrace() {
 
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
+    commands="target log"
     opts="--help --xtal --baud --isr --prof --elf{0..1} --addr{0..3} --sym{0..3} --size{0..3} --flags{0..3}"
     bauds="62500 125000 250000 500000 1000000 2000000"
     freqs="200 72"
@@ -38,6 +39,8 @@ _pytrace() {
         COMPREPLY=( $(compgen -W "${bool}" -- ${cur}) )
     elif [[ ${prev} =~ --prof ]]; then
         COMPREPLY=( $(compgen -W "${bool}" -- ${cur}) )
+    else
+        COMPREPLY=( $(compgen -W "${commands}" -- ${cur}) )
     fi
 }
 

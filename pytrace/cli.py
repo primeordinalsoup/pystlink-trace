@@ -64,34 +64,62 @@ class WatchPointManager(object):
         getOffset = 'o' in flags
         self.trace.setWatch(index, addr, size=size, getData=getData, getPC=getPC, getOffset=getOffset)
 
+_global_options = [
+    click.option('--xtal',   default=72,     help='XTAL frequency of target in MHz'),
+    click.option('--baud',   default=250000, help='Baud rate for SWO from target (2000000 max)'),
+	click.option('--isr',    default=0,      help='trace EXCEPTIONS'),
+	click.option('--prof',   default=0,      help='sample PC and profile CPU usage'),
+	click.option('--elf0',   default=None,   help='an application loaded on target, eg bootstrapper (for selecting watch variables)'),
+	click.option('--elf1',   default=None,   help='application loaded on target eg main app(for selecting watch variables)'),
+	click.option('--sym0',   default=None,   help='symbol of memory to watch on DWT0'),
+	click.option('--addr0',  default=None,   help='address IN HEX to watch on DWT0'),
+	click.option('--size0',  default=None,   help='number of bytes IN DEC to watch on DWT0 (defaults to size in map constrained to 2**n OR 4 if addr set explicitly via --addr0)'),
+	click.option('--flags0', default="dp",   help='flags to control DWT reporting, d: data, p: PC, o: offset, r: reads, w: writes, u: unique only'),
+	click.option('--sym1',   default=None,   help='symbol of memory to watch on DWT1'),
+	click.option('--addr1',  default=None,   help='address IN HEX to watch on DWT1'),
+	click.option('--size1',  default=None,   help='number of bytes IN DEC to watch on DWT1 (defaults to size in map constrained to 2**n OR 4 if addr set explicitly via --addr1)'),
+	click.option('--flags1', default="dp",   help='flags to control DWT reporting, d: data, p: PC, o: offset, r: reads, w: writes, u: unique only'),
+	click.option('--sym2',   default=None,   help='symbol of memory to watch on DWT2'),
+	click.option('--addr2',  default=None,   help='address IN HEX to watch on DWT2'),
+	click.option('--size2',  default=None,   help='number of bytes IN DEC to watch on DWT2 (defaults to size in map constrained to 2**n OR 4 if addr set explicitly via --addr2)'),
+	click.option('--flags2', default="dp",   help='flags to control DWT reporting, d: data, p: PC, o: offset, r: reads, w: writes, u: unique only'),
+	click.option('--sym3',   default=None,   help='symbol of memory to watch on DWT3'),
+	click.option('--addr3',  default=None,   help='address IN HEX to watch on DWT3'),
+	click.option('--size3',  default=None,   help='number of bytes IN DEC to watch on DWT3 (defaults to size in map constrained to 2**n OR 4 if addr set explicitly via --addr3)'),
+	click.option('--flags3', default="dp",   help='flags to control DWT reporting, d: data, p: PC, o: offset, r: reads, w: writes, u: unique only'),
+]
+
+def global_options(func):
+    for option in reversed(_global_options):
+        func = option(func)
+    return func
 
 # NOTE: This version *must* match the pip package one in setup.py, please update them together!
-@click.version_option(version="1.4.0")
+@click.version_option(version="1.4.1")
+@click.group()
+def cmnds():
+    pass
 
-@click.command()
-@click.option('--xtal',   default=72,     help='XTAL frequency of target in MHz')
-@click.option('--baud',   default=250000, help='Baud rate for SWO from target (2000000 max)')
-@click.option('--isr',    default=0,      help='trace EXCEPTIONS')
-@click.option('--prof',   default=0,      help='sample PC and profile CPU usage')
-@click.option('--elf0',   default=None,   help='an application loaded on target, eg bootstrapper (for selecting watch variables)')
-@click.option('--elf1',   default=None,   help='application loaded on target eg main app(for selecting watch variables)')
-@click.option('--sym0',   default=None,   help='symbol of memory to watch on DWT0')
-@click.option('--addr0',  default=None,   help='address IN HEX to watch on DWT0')
-@click.option('--size0',  default=None,   help='number of bytes IN DEC to watch on DWT0 (defaults to size in map constrained to 2**n OR 4 if addr set explicitly via --addr0)')
-@click.option('--flags0', default="dp",   help='flags to control DWT reporting, d: data, p: PC, o: offset, r: reads, w: writes, u: unique only')
-@click.option('--sym1',   default=None,   help='symbol of memory to watch on DWT1')
-@click.option('--addr1',  default=None,   help='address IN HEX to watch on DWT1')
-@click.option('--size1',  default=None,   help='number of bytes IN DEC to watch on DWT1 (defaults to size in map constrained to 2**n OR 4 if addr set explicitly via --addr1)')
-@click.option('--flags1', default="dp",   help='flags to control DWT reporting, d: data, p: PC, o: offset, r: reads, w: writes, u: unique only')
-@click.option('--sym2',   default=None,   help='symbol of memory to watch on DWT2')
-@click.option('--addr2',  default=None,   help='address IN HEX to watch on DWT2')
-@click.option('--size2',  default=None,   help='number of bytes IN DEC to watch on DWT2 (defaults to size in map constrained to 2**n OR 4 if addr set explicitly via --addr2)')
-@click.option('--flags2', default="dp",   help='flags to control DWT reporting, d: data, p: PC, o: offset, r: reads, w: writes, u: unique only')
-@click.option('--sym3',   default=None,   help='symbol of memory to watch on DWT3')
-@click.option('--addr3',  default=None,   help='address IN HEX to watch on DWT3')
-@click.option('--size3',  default=None,   help='number of bytes IN DEC to watch on DWT3 (defaults to size in map constrained to 2**n OR 4 if addr set explicitly via --addr3)')
-@click.option('--flags3', default="dp",   help='flags to control DWT reporting, d: data, p: PC, o: offset, r: reads, w: writes, u: unique only')
-def run(xtal, baud, isr, prof, elf0, elf1, sym0, addr0, size0, sym1, addr1, size1, sym2, addr2, size2, sym3, addr3, size3, flags0, flags1, flags2, flags3):
+@cmnds.command()
+@global_options
+def log(**kwargs):
+    """Capture SWO trace output from stlink V2"""
+    run_trace(**kwargs)
+
+@cmnds.command()
+@global_options
+def target(**kwargs):
+    """Report on attached target, its ID and present voltage"""
+    try:
+        target = stlinktrace.StlinkTrace()
+    except Exception as e:
+        print("NO STLINK! exiting. {}".format(e))
+    else:
+        id = target.getCoreID()
+        voltage = target.getTargetVoltage()
+        print("ID: {:#X}\nVoltage: {:.4}".format(id, voltage))
+
+def run_trace(xtal, baud, isr, prof, elf0, elf1, sym0, addr0, size0, sym1, addr1, size1, sym2, addr2, size2, sym3, addr3, size3, flags0, flags1, flags2, flags3):
     """Capture SWO trace output from stlink V2"""
     try:
         trace = stlinktrace.StlinkTrace(xtal, baud)
@@ -126,6 +154,3 @@ def run(xtal, baud, isr, prof, elf0, elf1, sym0, addr0, size0, sym1, addr1, size
             except:
                 trace.stopSWO()
         print("we got:\n{}".format(parser.getGprof()))
-
-if __name__ == '__main__':
-    run()
