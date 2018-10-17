@@ -1,1 +1,2 @@
 pyswd>=0.0.2
+pyansiterm>=0.0.1

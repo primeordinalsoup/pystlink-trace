@@ -104,7 +104,7 @@ def cmnds():
 @global_options
 def log(**kwargs):
     """Capture SWO trace output from stlink V2"""
-    run_trace(**kwargs)
+    run_trace(command='log', **kwargs)
 
 @cmnds.command()
 @global_options
@@ -119,8 +119,10 @@ def target(**kwargs):
         voltage = target.getTargetVoltage()
         print("ID: {:#X}\nVoltage: {:.4}".format(id, voltage))
 
-def run_trace(xtal, baud, isr, prof, elf0, elf1, sym0, addr0, size0, sym1, addr1, size1, sym2, addr2, size2, sym3, addr3, size3, flags0, flags1, flags2, flags3):
+def run_trace(command, xtal, baud, isr, prof, elf0, elf1, sym0, addr0, size0, sym1, addr1, size1, sym2, addr2, size2, sym3, addr3, size3, flags0, flags1, flags2, flags3):
     """Capture SWO trace output from stlink V2"""
+    print("cmnd: {}".format(command))
+
     try:
         trace = stlinktrace.StlinkTrace(xtal, baud)
     except Exception as e:
@@ -153,4 +155,3 @@ def run_trace(xtal, baud, isr, prof, elf0, elf1, sym0, addr0, size0, sym1, addr1
                         break
             except:
                 trace.stopSWO()
-        print("we got:\n{}".format(parser.getGprof()))

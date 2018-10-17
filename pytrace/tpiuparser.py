@@ -10,6 +10,7 @@
 
 from subprocess import Popen, PIPE, run
 from enum import Enum
+from pytrace import swoeventhandler
 
 DBG_EV_PORT_TIMESTAMP        = 8
 DBG_EV_PORT_QFSIGDISPATCH    = 9
@@ -281,25 +282,34 @@ class TimeStamp(object):
 class TextOutput(object):
     """ formats single chars and integers to the terminal, including
         translating \n into correct EOL """
+    def __init__(self):
+        self.line = ""
+        self._terminated = False
+
     def update8(self, u8):
         if u8 == ord('\n'):
             # embedded uses \n as newline, let python decide what is EOL
-            print("")
+            self._terminated = True
         else:
-            # print the single ascii char WITHOUT newline
-            print(chr(u8), end="")
+            self.line += chr(u8)
 
     def updateInt(self, u):
-        print( "{}({})".format(u, hex(u)) )
+        self.line += "{}({})".format(u, hex(u))
 
+    def reset(self):
+        self.line = ""
+        self._terminated = False
+
+    def isComplete(self):
+        return self._terminated
 
 class TPIUParser(object):
     """ For details of the TPIU protocol see the Armv7-M Architecture Reference Manual """
-    gprof_hist = {}
 
     def __init__(self, syms, flags, elfFiles=None):
         self._sm = TPIUParserSM()
         self.syms = syms
+        self._evt_handler = swoeventhandler.SWOEventHandler()
         self._overflows = 0
         self._sm.setEventPrinting(False)
         self._sm.eventHandlers["SIT"] = self.onSIT
@@ -319,16 +329,6 @@ class TPIUParser(object):
         self._lastData = [None for i in range(4)]
         self.addr2line = Address2LineResolver(elfFiles)
         self.addr2sym = Address2SymbolResolver(elfFiles)
-
-    def getGprof(self):
-        # return list(self.gprof_hist)
-        #  TODO: use sorted() with custom 'key' function
-        #  to creat list of k,v tuples sorted by value, so
-        #  we can display ranked list.  ALSO remove
-        #  provided 'idle' function eg prvIdleTask.lto_priv.407
-        #  for POD (pass in by cli argument), and list it separately
-        #  so we can show CPU gas gauge, i.e. percent busy/idle
-        return self.gprof_hist
 
     def parseValue(self, intValue):
         self._sm.onRxByte(intValue)
@@ -355,41 +355,20 @@ class TPIUParser(object):
         exc_number += bit8 << 8
         # get 'function', i.e. what is happening with this exception
         exc_func = (hsp.data[1] & 0x30) >> 4
-        func_map = ["RESERVED", "ENTER", "EXIT", "RE-ENTER"]
-        print("EXC: {}: {}".format(exc_number-16, func_map[exc_func]))
+        self._evt_handler.onExceptionTrace(exc_number, exc_func)
 
     def onPC(self, ev, hsp):
         """Hardware Source Packet - PC value event"""
         if self.addr2line:
             function_name = self.addr2line.resolve(hsp.value).rstrip("\r\n")
-            # increment histogram bin for this function
-            self.gprof_hist[function_name] = self.gprof_hist.get(function_name, 0) + 1
-            where = "# " + function_name
+            where = function_name
         else:
             where = ""
-        print("PC: {:08x} {}".format(hsp.value, where))
+        self._evt_handler.onPCSample(hsp.value, where)
 
     def onData(self, ev, hsp):
         """Hardware Source Packet - data value event"""
-        index = hsp.dwtIndex
-        if hsp.isWrite:
-            if not self._displayDataWrite[index]:
-                return
-            writeDir = "<-"
-        else:
-            if not self._displayDataRead[index]:
-                return
-            writeDir = "->"
-        if self.syms[index]:
-            dest = self.syms[index]
-        else:
-            dest = "DWT{}".format(index)
-        output = "DWT{}: {} {} {:02x}{}".format(index, dest, writeDir, hsp.value, self.addr2sym.addr2FormattedName(hsp.value))
-        if self._dataUnique[index] and self._lastData[index] != hsp.value:
-            print(output)
-            self._lastData[index] = hsp.value
-        elif not self._dataUnique[index]:
-            print(output)
+        self._evt_handler.onDWTData( hsp.value, hsp.dwtIndex, hsp.isWrite )
 
     def onOffset(self, ev, hsp):
         """Hardware Source Packet - data OFFSET event"""
@@ -402,6 +381,9 @@ class TPIUParser(object):
             if sit.lth == 1:
                 # normal printable single char (or line ending)
                 self._term0.update8(sit.data[0])
+                if self._term0.isComplete():
+                    self._evt_handler.onTextOutput(self._term0.line())
+                    self._term0.reset()
             elif (sit.lth == 2) or (sit.lth == 4):
                 # text output VALUE, format as dec(hex)
                 self._term0.updateInt(sit.sum)
