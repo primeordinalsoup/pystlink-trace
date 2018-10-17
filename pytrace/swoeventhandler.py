@@ -54,6 +54,12 @@ class Tui(object):
         self._screen.add_widget(self._status_bar)
         self._screen.refresh()
 
+    def window_height_chars(self):
+        return self.height_chars
+
+    def window_width_chars(self):
+        return self.width_chars
+
     def updateITMOutput(self, txt):
            self._log_list._lines = self._log_list._lines[1:]
            self._log_list._lines.append(txt)
@@ -78,9 +84,11 @@ class SWOEventHandler(object):
             sorted_hist = sorted(self.gprof_hist.items(), key=operator.itemgetter(1), reverse=True)
             prof = []
             for k,v in sorted_hist:
-                percent = v*100 / self.gprof_tot
-                bar_len = int(percent * 75 / 100)
-                bar_text = "{}  {:3.1f}".format(k,percent)
+                percent = v*100.0 / self.gprof_tot
+                #bar_len = int(percent * 122 / 100.0) # 2/3rds width
+                #bar_len = 55
+                bar_len = int(percent * self._tui.window_width_chars() / 120) # 2/3rds width
+                bar_text = "{}  {:3.1f}".format(k,percent) + " "*self._tui.window_width_chars()
                 bar = Font(bg=Colour.GREEN) + bar_text[:bar_len] + Font(bg=Colour.BLACK) + bar_text[bar_len:]
                 prof.append(bar)
                 # prof.append("{}  {:3.1f}".format(k,percent))

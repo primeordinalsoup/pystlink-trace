@@ -95,7 +95,7 @@ def global_options(func):
     return func
 
 # NOTE: This version *must* match the pip package one in setup.py, please update them together!
-@click.version_option(version="1.4.1")
+@click.version_option(version="1.4.2")
 @click.group()
 def cmnds():
     pass
