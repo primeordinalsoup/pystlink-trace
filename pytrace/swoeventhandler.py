@@ -72,12 +72,18 @@ class Tui(object):
 class SWOEventHandler(object):
     """ Receive incoming DWT/ITM events and present/log them"""
     def __init__(self):
+        self._overflows = 0
         self._resetGprof()
         self._prof_interval_s = 0.7
         self._tui = Tui()
 
+    def onOverflow(self):
+        self._overflows += 1
+
     def onPCSample(self, addr, function_name):
         # increment histogram bin for this function
+        # TODO: check idle addr range, special bin for 'idle' if specified
+        # HARDWIRE to test for LAK
         self.gprof_hist[function_name] = self.gprof_hist.get(function_name, 0) + 1
         self.gprof_tot += 1
         if self._gprof_accum_time() > self._prof_interval_s:

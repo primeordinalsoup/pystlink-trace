@@ -310,7 +310,6 @@ class TPIUParser(object):
         self._sm = TPIUParserSM()
         self.syms = syms
         self._evt_handler = swoeventhandler.SWOEventHandler()
-        self._overflows = 0
         self._sm.setEventPrinting(False)
         self._sm.eventHandlers["SIT"] = self.onSIT
         self._sm.eventHandlers["HSP_PC_SAMPLE"] = self.onPC
@@ -339,11 +338,8 @@ class TPIUParser(object):
             self.parseValue(intValue)
 
     def onOverflow(self, ev, data):
-        self._overflows += 1
-        if self._overflows > 50:
-            self._overflows = 0
-            print("!! getting overflows, increase baudrate or reduce tracing load.")
-    
+        self._evt_handler.onOverflow()
+
     def onUnknown(self, ev, hsp):
         print("UNKNOWN: disc {:02x} len {}".format(hsp.discriminator, hsp.expectedLth))
         
